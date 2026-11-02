@@ -11,7 +11,9 @@ Rapat & kuliah online gratis — video langsung antar browser (WebRTC P2P), tanp
 | Fitur | Keterangan |
 |---|---|
 | Video + suara | P2P antar peserta (server cuma atur sinyal, video tidak lewat server) |
-| Share layar | `getDisplayMedia`, tanpa renegosiasi (replaceTrack) |
+| Kualitas kamera | 720p30, bitrate sampai 2.5 Mbps (WebRTC default cuma ~300 kbps) |
+| Share layar | Jalur video **terpisah** — semua peserta bisa share bersamaan, kamera tetap terlihat. 1080p30, sampai 4 Mbps |
+| Volume peserta | Slider volume + indikator bicara (tile menyala hijau) |
 | Chat rapat | Real-time, ada badge pesan belum dibaca |
 | Kunci rapat | Host bisa tolak peserta baru |
 | Keluarkan peserta | Host bisa kick |
