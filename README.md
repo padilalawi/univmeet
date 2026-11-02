@@ -2,7 +2,7 @@
 
 Rapat & kuliah online gratis — video langsung antar browser (WebRTC P2P), tanpa install, tanpa akun.
 
-Domain target: **univmeet.online**
+**Live: https://univmeet.pages.dev** (gratis, tanpa kartu kredit, PC boleh mati)
 
 ---
 

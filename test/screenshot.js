@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
-const BASE = `http://localhost:${PORT}`;
+const BASE = process.env.BASE_URL || `http://localhost:${PORT}`;
 const CDP_PORT = 9335;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = path.join(os.tmpdir(), 'univmeet-shot-profile');

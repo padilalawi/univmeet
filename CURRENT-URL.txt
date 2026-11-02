@@ -1,32 +1,58 @@
-URL PUBLIK UNIVMEET
-====================
+URL RESMI UNIVMEET (PERMANEN)
+=============================
 
-1) TETAP (ngrok free) — link tidak berubah
-   https://avert-germinate-trade.ngrok-free.dev
+    https://univmeet.pages.dev
 
-   Catatan: pengunjung BARU akan lihat halaman peringatan ngrok sekali
-   ("You are about to visit ...") -> klik "Visit Site" -> masuk.
-   Cookie menyimpannya 7 hari per browser, jadi tidak muncul terus.
+    Link rapat:  https://univmeet.pages.dev/r/<kode-rapat>
 
-2) SEMENTARA (cloudflared quick tunnel) — TANPA halaman peringatan
-   https://vast-kingdom-regression-pledge.trycloudflare.com
-   URL ini BERUBAH setiap cloudflared dijalankan ulang.
-
-CARA NYALAIN
-------------
-Dobel-klik: NYALAIN-UNIVMEET.bat   (di folder ini)
-
-Syarat: PC nyala + internet. Jendela tunnel jangan ditutup.
-
-MANUAL
+STATUS
 ------
-  npm start
-  env -u ALL_PROXY -u HTTPS_PROXY -u HTTP_PROXY ~/tools/ngrok.exe http 3000
+- Gratis, tanpa kartu kredit.
+- PC boleh dimatikan — server jalan di Cloudflare.
+- Tidak ada halaman peringatan (beda dengan ngrok).
+- HTTPS otomatis (wajib untuk kamera/mikrofon).
+- Sudah dites end-to-end: video 2 arah, suara, chat, kunci rapat,
+  kick, dan promosi host otomatis — 12/12 lolos di URL live.
 
-CATATAN PENTING
----------------
-- ngrok butuh koneksi langsung (JANGAN lewat Tor) — kalau lewat proxy, ngrok
-  menolak: "Invalid configuration property value for 'proxy'".
-- Token ngrok tersimpan di: %LOCALAPPDATA%\ngrok\ngrok.yml
-- Token pernah ditempel di chat -> sebaiknya di-rotate:
-  dashboard.ngrok.com/get-started/your-authtoken -> Revoke -> buat baru.
+ARSITEKTUR
+----------
+  Browser  <--WSS-->  Cloudflare Pages (univmeet.pages.dev)
+                          |
+                          +--> Durable Object "RoomDO" (per kode rapat)
+                               menyimpan daftar peserta + relay sinyal WebRTC
+
+  Video/audio TIDAK lewat server (P2P langsung antar browser).
+  Server hanya mengatur "siapa bertemu siapa" (signaling).
+
+CARA UPDATE KALAU KODE DIUBAH
+-----------------------------
+  cd "C:\Users\DIZZO KINTIL\hermes project\web\univmeet"
+
+  # kalau worker/DO berubah:
+  npx wrangler deploy --config wrangler.worker.jsonc
+
+  # kalau tampilan/logika frontend berubah:
+  npx wrangler pages deploy --project-name univmeet --branch main --commit-dirty=true
+
+CATATAN TEKNIS
+--------------
+- `wrangler.jsonc`          = konfigurasi Pages (production branch: main)
+- `wrangler.worker.jsonc`   = konfigurasi Worker (Durable Object RoomDO)
+- Pages Functions: functions/ws.js (WebSocket), functions/config.js, functions/healthz.js
+- Logika protokol dipakai bersama: lib/protocol.js
+
+- workers.dev DIBLOKIR ISP Indonesia (DNS NXDOMAIN + TLS reset),
+  makanya dipakai pages.dev. Jangan pindah ke *.workers.dev.
+
+JALAN LOKAL (buat ngoprek)
+--------------------------
+  npm install
+  npm start           -> http://localhost:3000
+
+  Dobel-klik NYALAIN-UNIVMEET.bat kalau mau lokal + tunnel sementara.
+
+KEAMANAN
+--------
+- Token ngrok pernah ditempel di chat -> sudah tidak dipakai lagi.
+  Kalau masih ingin pakai ngrok, revoke dulu:
+  dashboard.ngrok.com/get-started/your-authtoken

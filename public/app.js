@@ -484,16 +484,27 @@
   /* socket                                                             */
   /* ------------------------------------------------------------------ */
 
-  function connectSocket() {
-    const socket = io({ transports: ['websocket', 'polling'] });
+  function connectSocket(roomId) {
+    if (S.socket && S.socketRoom === roomId) return;
+    if (S.socket) {
+      try { S.socket.disconnect(); } catch (_) {}
+      S.socket = null;
+    }
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // room ikut di URL supaya server (Durable Object) bisa langsung pilih ruang yang benar
+    const url = `${proto}//${location.host}/ws?room=${encodeURIComponent(roomId || '')}`;
+    const socket = new WSClient(url);
     S.socket = socket;
+    S.socketRoom = roomId;
+    let hadConnection = false;
 
     socket.on('connect', () => {
       el.liveDot.classList.remove('off');
-      if (S.joined && S.room) {
-        // reconnect -> masuk ulang
+      // hanya re-join kalau ini koneksi ULANG (bukan koneksi pertama)
+      if (hadConnection && S.joined && S.room) {
         doJoin(S.room, S.name, true);
       }
+      hadConnection = true;
     });
 
     socket.on('disconnect', () => {
@@ -526,7 +537,7 @@
     });
 
     socket.on('peers', ({ peers, host, locked }) => {
-      S.isHost = host === socket.id;
+      S.isHost = host === S.selfId;
       S.locked = !!locked;
       updateLockUi();
       for (const p of peers) {
@@ -540,7 +551,7 @@
         ensureTile(p.id, { name: p.name });
         updateTileState(p.id, { name: p.name, muted: !!p.muted, camOff: !!p.camOff, screen: !!p.screen, isHost: host === p.id });
       }
-      updateTileState(socket.id, { name: S.name, isHost: host === socket.id });
+      updateTileState(S.selfId, { name: S.name, isHost: host === S.selfId });
       renderPeople();
     });
 
@@ -583,6 +594,7 @@
       buildLocalTile();
     }
 
+    connectSocket(room);
     S.socket.emit('join', { room, name }, (res) => {
       if (!res || !res.ok) {
         const msg = (res && res.error) || 'Gagal masuk rapat.';
@@ -596,6 +608,7 @@
       if (isRejoin) destroyAllPeers();
 
       S.selfId = res.selfId;
+      if (S.socket) S.socket.id = res.selfId;
       S.isHost = !!res.host;
       S.locked = !!res.locked;
       S.maxPeers = res.maxPeers || S.maxPeers;
@@ -995,7 +1008,7 @@
       setHint(`Kamu diundang ke rapat "${code}" — isi nama lalu klik Gabung.`);
     }
 
-    connectSocket();
+    // koneksi WebSocket dibuat saat join (room ikut di URL)
 
     // undangan 1 klik: kalau nama sudah tersimpan, langsung masuk
     if (code && savedName) {
