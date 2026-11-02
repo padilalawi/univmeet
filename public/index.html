@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>UnivMeet — Rapat Online Gratis</title>
+<meta name="description" content="UnivMeet: rapat dan kuliah online gratis langsung dari browser. Video, suara, share layar, dan chat tanpa install." />
+<meta name="theme-color" content="#0b0f19" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Cpath d='M8 12a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-8zm12 3.2 4.4-2.6c.5-.3 1.1.05 1.1.63v5.54c0 .58-.6.93-1.1.63L20 16.8v-1.6z' fill='white'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<!-- ============ LANDING ============ -->
+<div id="landing" class="view">
+  <div class="bg-glow"></div>
+
+  <header class="land-top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M8 12a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-8zm12 3.2 4.4-2.6c.5-.3 1.1.05 1.1.63v5.54c0 .58-.6.93-1.1.63L20 16.8v-1.6z" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-name">UnivMeet</span>
+    </div>
+    <a class="top-link" href="#cara-pakai">Cara pakai</a>
+  </header>
+
+  <main class="land-main">
+    <section class="hero">
+      <h1>Rapat &amp; kuliah online,<br /><span class="grad">tanpa install.</span></h1>
+      <p class="sub">Video langsung antar browser (P2P). Gratis, cepat, dan bisa dipakai dari HP maupun laptop.</p>
+
+      <form id="join-form" class="card" autocomplete="off">
+        <div class="field">
+          <label for="in-name">Nama kamu</label>
+          <input id="in-name" type="text" placeholder="mis. Robi" maxlength="32" required />
+        </div>
+        <div class="field">
+          <label for="in-code">Kode rapat <span class="opt">(kosongkan untuk buat baru)</span></label>
+          <input id="in-code" type="text" placeholder="mis. kampus-biru-482" maxlength="48" />
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn primary" id="btn-create">Buat rapat baru</button>
+          <button type="button" class="btn ghost" id="btn-join">Gabung</button>
+        </div>
+        <div class="hint" id="land-hint" role="status"></div>
+      </form>
+
+      <ul class="feat">
+        <li><span>🎥</span>Video &amp; suara HD</li>
+        <li><span>🖥️</span>Share layar</li>
+        <li><span>💬</span>Chat rapat</li>
+        <li><span>🔒</span>Kunci rapat</li>
+      </ul>
+    </section>
+  </main>
+
+  <section class="how" id="cara-pakai">
+    <h2>Cara pakai</h2>
+    <ol>
+      <li>Isi nama, klik <b>Buat rapat baru</b>.</li>
+      <li>Klik <b>Copy link</b>, kirim ke teman / dosen / peserta.</li>
+      <li>Mereka buka link itu, isi nama, langsung masuk.</li>
+    </ol>
+    <p class="note">Maksimal <b id="max-peers">8</b> orang per rapat. Tidak perlu akun, tidak perlu install.</p>
+  </section>
+
+  <footer class="land-foot">© <span id="year"></span> UnivMeet · univmeet.online</footer>
+</div>
+
+<!-- ============ ROOM ============ -->
+<div id="room" class="view hidden">
+  <header class="room-top">
+    <div class="brand small">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M8 12a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-8zm12 3.2 4.4-2.6c.5-.3 1.1.05 1.1.63v5.54c0 .58-.6.93-1.1.63L20 16.8v-1.6z" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-name">UnivMeet</span>
+    </div>
+
+    <div class="room-mid">
+      <button id="btn-copy" class="code-pill" title="Copy link rapat">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M9 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2zm-4 6H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span id="room-code">—</span>
+      </button>
+      <span class="dot-live" id="live-dot" title="Terhubung"></span>
+    </div>
+
+    <div class="room-right">
+      <span class="people" id="people-count">1 peserta</span>
+      <button id="btn-lock" class="btn tiny" title="Kunci rapat (hanya host)">🔓 Kunci</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div id="grid" class="grid"></div>
+    <div id="grid-empty" class="grid-empty hidden">
+      <p>Menunggu peserta lain…</p>
+      <button class="btn ghost" id="btn-copy2">Copy link rapat</button>
+    </div>
+  </main>
+
+  <aside id="side" class="side hidden">
+    <div class="side-tabs">
+      <button class="tab active" data-tab="chat">Chat</button>
+      <button class="tab" data-tab="people">Peserta</button>
+      <button class="side-close" id="btn-side-close" title="Tutup">✕</button>
+    </div>
+    <div class="side-body" id="tab-chat">
+      <div class="chat-log" id="chat-log"></div>
+      <form class="chat-form" id="chat-form" autocomplete="off">
+        <input id="chat-input" type="text" placeholder="Tulis pesan…" maxlength="800" />
+        <button type="submit" class="btn primary tiny">Kirim</button>
+      </form>
+    </div>
+    <div class="side-body hidden" id="tab-people">
+      <ul class="people-list" id="people-list"></ul>
+    </div>
+  </aside>
+
+  <footer class="controls">
+    <button id="btn-mic" class="ctl" title="Mikrofon">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>Mic</span>
+    </button>
+    <button id="btn-cam" class="ctl" title="Kamera">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 7a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7zm12 3.4 4-2.4c.5-.3 1.1.05 1.1.63v6.74c0 .58-.6.93-1.1.63l-4-2.4v-3.2z" fill="currentColor"/></svg>
+      <span>Kamera</span>
+    </button>
+    <button id="btn-screen" class="ctl" title="Share layar">
+      <svg viewBox="0 0 24 24" class="ico"><rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 20h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>Layar</span>
+    </button>
+    <button id="btn-chat" class="ctl" title="Chat">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <span>Chat</span>
+      <i class="badge hidden" id="chat-badge">0</i>
+    </button>
+    <button id="btn-leave" class="ctl danger" title="Keluar">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M10 8l-4 4 4 4M6 12h9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Keluar</span>
+    </button>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<div id="kick-screen" class="kick hidden">
+  <div class="kick-card">
+    <h2>Kamu dikeluarkan dari rapat</h2>
+    <p>Host mengeluarkan kamu dari rapat ini.</p>
+    <a class="btn primary" href="/">Kembali ke beranda</a>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
