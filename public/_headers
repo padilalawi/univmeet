@@ -1,0 +1,13 @@
+/*
+  Jangan cache HTML/JS supaya update langsung kepakai di browser pengguna.
+*/
+/index.html
+  Cache-Control: no-store
+/
+  Cache-Control: no-store
+/app.js
+  Cache-Control: no-store
+/net.js
+  Cache-Control: no-store
+/styles.css
+  Cache-Control: no-cache

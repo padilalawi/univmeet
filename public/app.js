@@ -290,6 +290,16 @@
     } else if (!isHost && hostBadge) {
       hostBadge.remove();
     }
+
+    let screenBadge = tile.querySelector('.badge-screen');
+    if (screen && !screenBadge) {
+      screenBadge = document.createElement('div');
+      screenBadge.className = 'badge-screen';
+      screenBadge.textContent = 'LAYAR';
+      tile.appendChild(screenBadge);
+    } else if (!screen && screenBadge) {
+      screenBadge.remove();
+    }
   }
 
   function syncGridCount() {
@@ -755,30 +765,209 @@
 
   async function toggleScreen() {
     if (S.screenStream) return stopScreen();
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      toast('Browser ini tidak mendukung share layar');
+
+    const btnLabel = el.btnScreen.querySelector('span');
+    const resetBtn = () => { if (btnLabel) btnLabel.textContent = 'Layar'; };
+    if (btnLabel) btnLabel.textContent = 'Membuka…';
+    setTimeout(resetBtn, 1200);
+
+    // Diagnosa awal: kasih tau user APA yang kurang, jangan diam
+    const diag = {
+      secure: window.isSecureContext,
+      hasMediaDevices: !!(navigator.mediaDevices),
+      hasGetDisplayMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),
+      ua: navigator.userAgent,
+      origin: location.origin,
+      focused: document.hasFocus(),
+    };
+
+    if (!diag.hasGetDisplayMedia) {
+      resetBtn();
+      screenFailModal(diag, null);
       return;
     }
+
+    // opsi lengkap dulu; kalau browser menolak, ulangi dengan opsi minimal
+    let stream = null;
+    let lastErr = null;
+    const tries = [
+      { video: { frameRate: { ideal: 15, max: 30 } }, audio: false, selfBrowserSurface: 'include', surfaceSwitching: 'include', systemAudio: 'exclude' },
+      { video: { frameRate: 15 }, audio: false },
+      { video: true, audio: false },
+    ];
+    for (const opts of tries) {
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia(opts);
+        break;
+      } catch (err) {
+        lastErr = err;
+        // user membatalkan / izin ditolak -> jangan coba opsi lain
+        if (err && (err.name === 'NotAllowedError' || err.name === 'AbortError')) break;
+      }
+    }
+
+    if (!stream) {
+      resetBtn();
+      screenFailModal(diag, lastErr);
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false });
       S.screenStream = stream;
       const track = stream.getVideoTracks()[0];
+      if (!track) {
+        stopScreen();
+        toast('Tidak ada video pada sumber yang dipilih');
+        return;
+      }
       track.onended = () => stopScreen();
+
       pushVideoToPeers();
 
       const tile = getTile(S.selfId);
       if (tile) {
         const vid = tile.querySelector('video');
-        if (vid) vid.srcObject = stream;
+        if (vid) {
+          vid.srcObject = stream;
+          const pl = vid.play();
+          if (pl && pl.catch) pl.catch(() => {});
+        }
         tile.classList.remove('mirror');
       }
       updateTileState(S.selfId, { name: S.name + ' (kamu)', muted: !S.micOn, camOff: false, screen: true, isHost: S.isHost });
       syncControls();
       broadcastState();
+
+      // verifikasi: kalau ada peer yang sender-nya belum ikut track layar, perbaiki
+      const t = currentOutVideoTrack();
+      for (const p of S.peers.values()) {
+        if (!p.videoSender) {
+          await repairVideoSender(p, t);
+          continue;
+        }
+        if (p.videoSender.track && t && p.videoSender.track.id !== t.id) {
+          try { await p.videoSender.replaceTrack(t); } catch (_) {}
+        }
+      }
+
       toast('Sedang share layar');
     } catch (err) {
-      if (err && err.name !== 'NotAllowedError') toast('Gagal share layar');
+      console.warn('[univmeet] gagal mulai share layar:', err);
+      stopScreen();
+      screenFailModal(diag, err);
     }
+  }
+
+  // Kalau peer belum punya sender video (mis. dibuat saat kamera mati),
+  // tambahkan transceiver lalu negosiasi ulang.
+  async function repairVideoSender(peer, track) {
+    try {
+      const tx = peer.pc.addTransceiver(track || 'video', { direction: 'sendrecv', streams: S.localStream ? [S.localStream] : [] });
+      peer.videoTx = tx;
+      peer.videoSender = tx.sender;
+      if (track) { try { await tx.sender.replaceTrack(track); } catch (_) {} }
+
+      if (peer.initiator) {
+        const offer = await peer.pc.createOffer();
+        await peer.pc.setLocalDescription(offer);
+        sendSignal(peer.id, { type: 'offer', sdp: peer.pc.localDescription });
+      }
+    } catch (err) {
+      console.warn('[univmeet] repairVideoSender gagal:', err);
+    }
+  }
+
+  // Modal diagnosa share layar: tampil terus sampai ditutup, isinya penyebab + cara benerin
+  async function screenFailModal(diag, err) {
+    const nm = err && err.name ? err.name : 'TidakDidukung';
+    const msg = err && err.message ? err.message : '';
+
+    let permState = 'tidak diketahui';
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const st = await navigator.permissions.query({ name: 'display-capture' });
+        permState = st.state;
+      }
+    } catch (_) {}
+
+    const ua = diag.ua || navigator.userAgent || '';
+    const browser = /Brave/i.test(ua) || navigator.brave ? 'Brave'
+      : /Edg\//.test(ua) ? 'Edge'
+      : /OPR\//.test(ua) ? 'Opera'
+      : /Firefox/i.test(ua) ? 'Firefox'
+      : /Chrome/i.test(ua) ? 'Chrome'
+      : 'browser ini';
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+
+    const reasons = [];
+    if (mobile) {
+      reasons.push('Browser di HP umumnya <b>tidak mendukung</b> share layar. Pakai laptop/PC.');
+    }
+    if (!diag.secure) {
+      reasons.push('Halaman tidak HTTPS — share layar diblokir. Buka lewat <b>https://</b>.');
+    }
+    if (permState === 'denied') {
+      reasons.push('Izin share layar pernah <b>ditolak</b> dan masih diingat browser, jadi jendela pilih layar tidak muncul lagi.');
+    }
+    if (nm === 'NotAllowedError' || nm === 'AbortError') {
+      reasons.push('Permintaan ditolak / dibatalkan (bisa karena jendela pilih layar ditutup, atau izin diblokir).');
+    }
+    if (nm === 'NotSupportedError' || nm === 'TidakDidukung') {
+      reasons.push('Perangkat/browser ini melaporkan share layar tidak didukung.');
+    }
+    if (nm === 'InvalidStateError') {
+      reasons.push('Permintaan tidak dianggap aksi pengguna. Klik ulang tombol Layar (jangan lewat skrip/otomatis).');
+    }
+    if (/Brave/i.test(browser)) {
+      reasons.push('Di Brave, proteksi Shields kadang memblokir share layar — coba turunkan Shields untuk situs ini.');
+    }
+    if (!reasons.length) {
+      reasons.push('Penyebab belum pasti — lihat detail teknis di bawah.');
+    }
+
+    const steps = [
+      `Klik ikon <b>gembok</b> / <b>tune</b> di kiri alamat <code>${diag.origin}</code>.`,
+      'Cari pengaturan <b>Layar / Screen sharing / Display capture</b>, ubah ke <b>Allow / Izinkan</b>.',
+      'Kalau tidak ada: buka <code>chrome://settings/content/capture</code> (Brave: <code>brave://settings/content/capture</code>), hapus situs dari daftar blokir.',
+      'Tutup tab, buka lagi <code>' + diag.origin + '</code>, lalu klik <b>Layar</b> sekali lagi.',
+    ];
+
+    const detail = JSON.stringify({ error: nm, message: msg, permission: permState, ...diag }, null, 2);
+
+    const old = document.getElementById('screen-fail');
+    if (old) old.remove();
+
+    const wrap = document.createElement('div');
+    wrap.id = 'screen-fail';
+    wrap.className = 'sf-overlay';
+    wrap.innerHTML = `
+      <div class="sf-card">
+        <h3>Share layar gagal</h3>
+        <p class="sf-sub">Browser: <b>${browser}</b> · izin: <b>${permState}</b> · error: <b>${nm}</b></p>
+        <ul class="sf-reasons">${reasons.map((r) => `<li>${r}</li>`).join('')}</ul>
+        <div class="sf-steps">
+          <div class="sf-steps-title">Cara benerin (${browser})</div>
+          <ol>${steps.map((s) => `<li>${s}</li>`).join('')}</ol>
+        </div>
+        <details class="sf-detail"><summary>Detail teknis</summary><pre>${detail.replace(/</g, '&lt;')}</pre></details>
+        <div class="sf-actions">
+          <button class="btn primary tiny" id="sf-copy">Copy detail</button>
+          <button class="btn ghost tiny" id="sf-close">Tutup</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+
+    const close = () => { try { wrap.remove(); } catch (_) {} };
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('#sf-close').addEventListener('click', close);
+    wrap.querySelector('#sf-copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(detail);
+        toast('Detail dicopy — tempel ke chat biar gua bisa bantu');
+      } catch (_) {
+        toast('Gagal copy, salin manual dari Detail teknis');
+      }
+    });
   }
 
   function stopScreen() {
