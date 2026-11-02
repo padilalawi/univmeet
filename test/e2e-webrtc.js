@@ -16,7 +16,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
-const BASE = `http://localhost:${PORT}`;
+const BASE = process.env.BASE_URL || `http://localhost:${PORT}`;
 const CDP_PORT = 9333;
 const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = path.join(os.tmpdir(), 'univmeet-e2e-profile');
