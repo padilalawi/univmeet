@@ -88,9 +88,23 @@
 
     <div class="room-right">
       <span class="people" id="people-count">1 peserta</span>
+      <button id="btn-sound" class="btn tiny" title="Volume suara peserta">🔊 <span id="vol-label">100%</span></button>
       <button id="btn-lock" class="btn tiny" title="Kunci rapat (hanya host)">🔓 Kunci</button>
     </div>
   </header>
+
+  <div id="audio-unlock" class="audio-unlock hidden">
+    <span>🔇 Suara peserta diblokir browser</span>
+    <button id="btn-unlock" class="btn primary tiny">Aktifkan suara</button>
+  </div>
+
+  <div id="vol-panel" class="vol-panel hidden">
+    <div class="vol-row">
+      <span>Volume peserta</span>
+      <input id="vol-slider" type="range" min="0" max="100" value="100" />
+    </div>
+    <div class="vol-tip">Kalau suara menggema, pakai headphone atau kecilkan volume.</div>
+  </div>
 
   <main class="stage">
     <div id="grid" class="grid"></div>
@@ -153,7 +167,7 @@
   </div>
 </div>
 
-<script src="/net.js?v=3"></script>
-<script src="/app.js?v=3"></script>
+<script src="/net.js?v=4"></script>
+<script src="/app.js?v=4"></script>
 </body>
 </html>

@@ -289,6 +289,11 @@ input { font-family: inherit; }
 .ctl:hover { border-color: #3a4560; transform: translateY(-1px); }
 .ctl .ico { width: 22px; height: 22px; }
 .ctl.off { background: #2a1520; border-color: #5b2333; color: #f87171; }
+.ctl.na { opacity: .55; }
+.ctl.na::after {
+  content: ''; position: absolute; top: 8px; right: 10px;
+  width: 6px; height: 6px; border-radius: 50%; background: #f59e0b;
+}
 .ctl.active { background: #1b2440; border-color: var(--brand); color: #c7d2fe; }
 .ctl.danger { background: var(--danger); border-color: transparent; color: #fff; }
 .ctl.danger:hover { filter: brightness(1.08); }
@@ -339,3 +344,22 @@ input { font-family: inherit; }
 .sf-detail summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
 .sf-detail pre { background: #0a0f1b; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 11.5px; overflow: auto; max-height: 180px; color: #9fb0c9; }
 .sf-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ===== audio: banner unlock + panel volume ===== */
+.audio-unlock {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: #3a2a12; border-bottom: 1px solid #6b4a1c; color: #fbd38d;
+  padding: 9px 14px; font-size: 13px; font-weight: 600; z-index: 6;
+}
+.vol-panel {
+  position: fixed; right: 14px; top: 58px; z-index: 30; width: min(280px, 86vw);
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px; box-shadow: var(--shadow);
+}
+.vol-row { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+.vol-row input[type="range"] { flex: 1; accent-color: var(--brand); }
+.vol-tip { margin-top: 8px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+/* indikator bicara */
+.tile.speaking { box-shadow: inset 0 0 0 2px rgba(34, 197, 94, .85); }
+.tile.speaking .tag { background: rgba(22, 101, 52, .85); }

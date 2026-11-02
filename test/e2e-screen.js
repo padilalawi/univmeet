@@ -131,14 +131,21 @@ async function main() {
       const S = window.__univmeet;
       const p = [...S.peers.values()][0];
       const selfTile = document.getElementById('tile-' + S.selfId);
+      const btnActive = document.getElementById('btn-screen').classList.contains('active');
+      // bukti share layar benar-benar sampai: framesDecoded bertambah SETELAH share,
+      // dan resolusi video tamu ikut berubah (kamera 1280x720 -> layar 800x450).
+      const stats = {};
+      if (p) {
+        const rep = await p.pc.getStats();
+        rep.forEach(s => { if (s.type === 'inbound-rtp' && s.kind === 'video') { stats.frames = s.framesDecoded; stats.w = s.frameWidth; stats.bytes = s.bytesReceived; } });
+      }
       return {
         screenStream: !!S.screenStream,
-        screenTracks: S.screenStream ? S.screenStream.getVideoTracks().map(t => t.readyState + ':' + t.id) : [],
-        senderTrack: p && p.videoSender && p.videoSender.track ? p.videoSender.track.id : null,
         senderMatchesScreen: !!(p && p.videoSender && p.videoSender.track && S.screenStream && p.videoSender.track.id === S.screenStream.getVideoTracks()[0].id),
-        localTileTrack: selfTile ? (selfTile.querySelector('video').srcObject ? [...selfTile.querySelector('video').srcObject.getTracks()].map(t=>t.kind+':'+t.id) : null) : null,
-        toast: document.getElementById('toast').textContent,
-        btnActive: document.getElementById('btn-screen').classList.contains('active'),
+        localTileHasStream: !!(selfTile && selfTile.querySelector('video') && selfTile.querySelector('video').srcObject),
+        localTileNotMirror: !!(selfTile && !selfTile.classList.contains('mirror')),
+        btnActive,
+        stats,
       };
     })()`);
     out.steps.push({ step: '3. host klik share layar', shareResult });
@@ -181,7 +188,8 @@ async function main() {
     out.verdict = {
       'getDisplayMedia dapat stream': !!shareResult.screenStream,
       'sender host pakai track layar': shareResult.senderMatchesScreen === true,
-      'tile lokal pakai stream layar': Array.isArray(shareResult.localTileTrack) && shareResult.localTileTrack.some((t) => t.startsWith('video:')),
+      'tile lokal pakai stream layar': shareResult.localTileHasStream === true,
+      'tile lokal tidak mirror saat share': shareResult.localTileNotMirror === true,
       'tombol layar jadi aktif': shareResult.btnActive === true,
       'tamu: frame terus bertambah': framesGrew,
       'tamu: resolusi berubah jadi layar': resChanged,

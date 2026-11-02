@@ -28,6 +28,8 @@
     unread: 0,
     joined: false,
     leaving: false,
+    volume: 1,
+    audioBlocked: false,
   };
 
   /* ------------------------------------------------------------------ */
@@ -252,10 +254,59 @@
     const vid = tile.querySelector('video');
     if (vid && vid.srcObject !== stream) {
       vid.srcObject = stream;
+      vid.volume = S.volume;
       const play = vid.play();
-      if (play && play.catch) play.catch(() => {});
+      if (play && play.catch) {
+        play.catch((err) => {
+          // Browser memblokir autoplay audio -> suara tidak keluar tanpa error.
+          // Tandai supaya muncul tombol "Aktifkan suara".
+          if (err && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
+            S.audioBlocked = true;
+            showAudioUnlock();
+          }
+        });
+      }
     }
     tile.classList.remove('connecting');
+  }
+
+  function showAudioUnlock() {
+    const el2 = document.getElementById('audio-unlock');
+    if (el2) el2.classList.remove('hidden');
+  }
+
+  function hideAudioUnlock() {
+    const el2 = document.getElementById('audio-unlock');
+    if (el2) el2.classList.add('hidden');
+    S.audioBlocked = false;
+  }
+
+  // Dipanggil dari klik pengguna -> izinkan browser memutar audio
+  async function unlockAudio() {
+    let ok = 0;
+    for (const vid of document.querySelectorAll('#grid video')) {
+      try {
+        vid.muted = vid.closest('.tile') && vid.closest('.tile').classList.contains('mirror') ? true : false;
+        vid.volume = S.volume;
+        await vid.play();
+        ok++;
+      } catch (_) {}
+    }
+    hideAudioUnlock();
+    toast(ok > 1 ? 'Suara diaktifkan' : 'Suara diaktifkan');
+  }
+
+  function setVolume(v) {
+    S.volume = Math.min(1, Math.max(0, Number(v)));
+    for (const vid of document.querySelectorAll('#grid video')) {
+      if (vid.closest('.tile') && vid.closest('.tile').classList.contains('mirror')) continue;
+      vid.volume = S.volume;
+    }
+    const sl = document.getElementById('vol-slider');
+    if (sl) sl.value = String(Math.round(S.volume * 100));
+    const lbl = document.getElementById('vol-label');
+    if (lbl) lbl.textContent = Math.round(S.volume * 100) + '%';
+    try { localStorage.setItem('univmeet:volume', String(S.volume)); } catch (_) {}
   }
 
   function updateTileState(id, { name, muted, camOff, screen, isHost } = {}) {
@@ -406,6 +457,7 @@
       pc.onnegotiationneeded = async () => {
         try {
           const offer = await pc.createOffer();
+          offer.sdp = tuneAudioSdp(offer.sdp);
           await pc.setLocalDescription(offer);
           sendSignal(id, { type: 'offer', sdp: pc.localDescription });
         } catch (err) {
@@ -433,6 +485,7 @@
         adoptTransceivers(peer);
         syncRemoteStream(peer);
         const answer = await peer.pc.createAnswer();
+        answer.sdp = tuneAudioSdp(answer.sdp);
         await peer.pc.setLocalDescription(answer);
         sendSignal(from, { type: 'answer', sdp: peer.pc.localDescription });
       } catch (err) {
@@ -488,6 +541,71 @@
 
   function destroyAllPeers() {
     for (const id of Array.from(S.peers.keys())) destroyPeer(id);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Audio tuning: Opus FEC supaya suara tetap jelas saat jaringan goyang */
+  /* ------------------------------------------------------------------ */
+
+  function tuneAudioSdp(sdp) {
+    if (!sdp) return sdp;
+    try {
+      const lines = sdp.split('\r\n');
+      // cari payload type untuk opus
+      const opusLine = lines.find((l) => /^a=rtpmap:\d+ opus\/48000/i.test(l));
+      if (!opusLine) return sdp;
+      const pt = opusLine.match(/^a=rtpmap:(\d+)/)[1];
+
+      let touched = false;
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l.startsWith('a=fmtp:' + pt)) continue;
+        const want = ['useinbandfec=1', 'stereo=0', 'sprop-stereo=0', 'maxaveragebitrate=64000'];
+        let params = l.slice(('a=fmtp:' + pt).length).trim();
+        for (const w of want) {
+          const key = w.split('=')[0];
+          if (new RegExp('(^|;)' + key + '=').test(params)) {
+            params = params.replace(new RegExp(key + '=[^;]*'), w);
+          } else {
+            params = params ? params + ';' + w : w;
+          }
+        }
+        lines[i] = 'a=fmtp:' + pt + ' ' + params;
+        touched = true;
+      }
+      return touched ? lines.join('\r\n') : sdp;
+    } catch (_) {
+      return sdp;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Indikator bicara (audioLevel dari getStats)                         */
+  /* ------------------------------------------------------------------ */
+
+  let levelTimer = null;
+
+  function startLevelMonitor() {
+    if (levelTimer) return;
+    levelTimer = setInterval(async () => {
+      for (const p of S.peers.values()) {
+        try {
+          const rep = await p.pc.getStats();
+          let level = 0;
+          rep.forEach((s) => {
+            if (s.type === 'inbound-rtp' && s.kind === 'audio' && typeof s.audioLevel === 'number') {
+              level = Math.max(level, s.audioLevel);
+            }
+          });
+          const tile = getTile(p.id);
+          if (tile) tile.classList.toggle('speaking', level > 0.02);
+        } catch (_) {}
+      }
+    }, 700);
+  }
+
+  function stopLevelMonitor() {
+    if (levelTimer) { clearInterval(levelTimer); levelTimer = null; }
   }
 
   /* ------------------------------------------------------------------ */
@@ -636,6 +754,7 @@
       buildLocalTile();
       updateLockUi();
       syncGridCount();
+      markScreenAvailability();
 
       // peserta yang sudah ada -> kita yang jadi initiator
       for (const p of res.peers || []) {
@@ -651,6 +770,14 @@
 
       renderPeople();
       syncGridCount();
+      markScreenAvailability();
+      startLevelMonitor();
+
+      // pulihkan volume terakhir
+      try {
+        const savedVol = localStorage.getItem('univmeet:volume');
+        if (savedVol !== null) setVolume(Number(savedVol));
+      } catch (_) {}
 
       if (!isRejoin) {
         const link = location.origin + '/r/' + res.room;
@@ -678,6 +805,8 @@
     if (S.socket) S.socket.emit('leave');
     destroyAllPeers();
     stopAllMedia();
+    stopLevelMonitor();
+    hideAudioUnlock();
     S.joined = false;
     S.room = null;
     S.selfId = null;
@@ -763,6 +892,41 @@
     broadcastState();
   }
 
+  function isMobileDevice() {
+    const ua = navigator.userAgent || '';
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    return /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua) || (coarse && Math.min(screen.width, screen.height) < 820);
+  }
+
+  function inIframe() {
+    try { return window.self !== window.top; } catch (_) { return true; }
+  }
+
+  // Tombol Layar: tandai kalau perangkat ini memang tidak bisa share layar,
+  // supaya pengguna tidak menebak-nebak kenapa "tidak terjadi apa-apa".
+  function markScreenAvailability() {
+    const btn = el.btnScreen;
+    if (!btn) return;
+    const label = btn.querySelector('span');
+    const blockedByIframe = inIframe();
+    const noApi = !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+    const mobile = isMobileDevice();
+
+    if (blockedByIframe || noApi || mobile) {
+      btn.classList.add('na');
+      btn.title = blockedByIframe
+        ? 'Share layar tidak bisa di dalam panel preview — buka di tab browser'
+        : mobile
+          ? 'Share layar hanya dari laptop/PC, bukan HP'
+          : 'Browser ini tidak mendukung share layar';
+      if (label && !S.screenStream) label.textContent = 'Layar ✕';
+    } else {
+      btn.classList.remove('na');
+      btn.title = 'Share layar';
+      if (label && !S.screenStream) label.textContent = 'Layar';
+    }
+  }
+
   async function toggleScreen() {
     if (S.screenStream) return stopScreen();
 
@@ -772,14 +936,24 @@
     setTimeout(resetBtn, 1200);
 
     // Diagnosa awal: kasih tau user APA yang kurang, jangan diam
+    const inIframe = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
     const diag = {
       secure: window.isSecureContext,
       hasMediaDevices: !!(navigator.mediaDevices),
       hasGetDisplayMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),
+      inIframe,
       ua: navigator.userAgent,
       origin: location.origin,
       focused: document.hasFocus(),
     };
+
+    // Share layar DIBLOKIR di dalam iframe (panel preview, embed, dsb).
+    // Ini kebijakan browser (Permissions Policy: display-capture), bukan bug app.
+    if (inIframe) {
+      resetBtn();
+      screenFailModal(diag, null);
+      return;
+    }
 
     if (!diag.hasGetDisplayMedia) {
       resetBtn();
@@ -900,6 +1074,10 @@
     const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 
     const reasons = [];
+    if (diag.inIframe) {
+      reasons.push('Kamu membuka UnivMeet di dalam <b>panel preview / iframe</b>, bukan di browser. Browser <b>memblokir share layar di dalam iframe</b> — ini aturan keamanan browser, bukan kerusakan aplikasi.');
+      reasons.push('Solusi: buka alamatnya di <b>tab browser sungguhan</b> (Chrome/Edge/Brave), lalu share layar dari sana.');
+    }
     if (mobile) {
       reasons.push('Browser di HP umumnya <b>tidak mendukung</b> share layar. Pakai laptop/PC.');
     }
@@ -925,12 +1103,18 @@
       reasons.push('Penyebab belum pasti — lihat detail teknis di bawah.');
     }
 
-    const steps = [
-      `Klik ikon <b>gembok</b> / <b>tune</b> di kiri alamat <code>${diag.origin}</code>.`,
-      'Cari pengaturan <b>Layar / Screen sharing / Display capture</b>, ubah ke <b>Allow / Izinkan</b>.',
-      'Kalau tidak ada: buka <code>chrome://settings/content/capture</code> (Brave: <code>brave://settings/content/capture</code>), hapus situs dari daftar blokir.',
-      'Tutup tab, buka lagi <code>' + diag.origin + '</code>, lalu klik <b>Layar</b> sekali lagi.',
-    ];
+    const steps = diag.inIframe
+      ? [
+          'Copy alamat ini: <code>' + diag.origin + '</code>',
+          'Buka di <b>tab browser</b> (Chrome / Edge / Brave) — bukan di panel preview.',
+          'Masuk rapat seperti biasa, lalu klik <b>Layar</b>.',
+        ]
+      : [
+          `Klik ikon <b>gembok</b> / <b>tune</b> di kiri alamat <code>${diag.origin}</code>.`,
+          'Cari pengaturan <b>Layar / Screen sharing / Display capture</b>, ubah ke <b>Allow / Izinkan</b>.',
+          'Kalau tidak ada: buka <code>chrome://settings/content/capture</code> (Brave: <code>brave://settings/content/capture</code>), hapus situs dari daftar blokir.',
+          'Tutup tab, buka lagi <code>' + diag.origin + '</code>, lalu klik <b>Layar</b> sekali lagi.',
+        ];
 
     const detail = JSON.stringify({ error: nm, message: msg, permission: permState, ...diag }, null, 2);
 
@@ -951,6 +1135,7 @@
         </div>
         <details class="sf-detail"><summary>Detail teknis</summary><pre>${detail.replace(/</g, '&lt;')}</pre></details>
         <div class="sf-actions">
+          ${diag.inIframe ? `<a class="btn primary tiny" href="${diag.origin}" target="_blank" rel="noopener">Buka di browser</a>` : ''}
           <button class="btn primary tiny" id="sf-copy">Copy detail</button>
           <button class="btn ghost tiny" id="sf-close">Tutup</button>
         </div>
@@ -1159,6 +1344,30 @@
   el.btnCopy.addEventListener('click', copyLink);
   el.btnCopy2.addEventListener('click', copyLink);
 
+  // ---- suara: unlock, volume, panel ----
+  const unlockBtn = document.getElementById('btn-unlock');
+  if (unlockBtn) unlockBtn.addEventListener('click', unlockAudio);
+
+  const soundBtn = document.getElementById('btn-sound');
+  const volPanel = document.getElementById('vol-panel');
+  if (soundBtn && volPanel) {
+    soundBtn.addEventListener('click', () => {
+      volPanel.classList.toggle('hidden');
+      soundBtn.classList.toggle('active', !volPanel.classList.contains('hidden'));
+    });
+  }
+
+  const volSlider = document.getElementById('vol-slider');
+  if (volSlider) {
+    volSlider.addEventListener('input', (e) => setVolume(Number(e.target.value) / 100));
+  }
+
+  // klik pertama di mana saja = kesempatan unlock audio (kebijakan autoplay browser)
+  document.addEventListener('click', () => {
+    if (!S.audioBlocked) return;
+    unlockAudio();
+  }, { once: false });
+
   el.chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = el.chatInput.value.trim();
@@ -1178,6 +1387,7 @@
   async function boot() {
     el.year.textContent = String(new Date().getFullYear());
     window.__univmeet = S; // untuk debugging / e2e test
+    markScreenAvailability();
 
     try {
       const cfg = await fetch('/config').then((r) => r.json());
