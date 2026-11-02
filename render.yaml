@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: univmeet
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: MAX_PEERS
+        value: "8"
+      # TURN opsional — isi kalau punya kredensial TURN sendiri (produksi)
+      # - key: TURN_URL
+      #   value: turn:turn.univmeet.online:3478,turns:turn.univmeet.online:5349
+      # - key: TURN_USER
+      #   sync: false
+      # - key: TURN_PASS
+      #   sync: false
