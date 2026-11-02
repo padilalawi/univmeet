@@ -118,6 +118,12 @@ async function main() {
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     await send('Page.enable', {}, sessionId);
     await send('Runtime.enable', {}, sessionId);
+    // ngrok free menyelipkan halaman peringatan untuk user-agent browser standar.
+    // UA non-standar melewatinya (didokumentasikan ngrok) -> tes bisa jalan lewat URL publik.
+    if (process.env.UA_OVERRIDE) {
+      await send('Network.enable', {}, sessionId);
+      await send('Network.setUserAgentOverride', { userAgent: process.env.UA_OVERRIDE }, sessionId);
+    }
     return {
       targetId,
       sessionId,

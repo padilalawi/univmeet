@@ -1,0 +1,32 @@
+URL PUBLIK UNIVMEET
+====================
+
+1) TETAP (ngrok free) — link tidak berubah
+   https://avert-germinate-trade.ngrok-free.dev
+
+   Catatan: pengunjung BARU akan lihat halaman peringatan ngrok sekali
+   ("You are about to visit ...") -> klik "Visit Site" -> masuk.
+   Cookie menyimpannya 7 hari per browser, jadi tidak muncul terus.
+
+2) SEMENTARA (cloudflared quick tunnel) — TANPA halaman peringatan
+   https://vast-kingdom-regression-pledge.trycloudflare.com
+   URL ini BERUBAH setiap cloudflared dijalankan ulang.
+
+CARA NYALAIN
+------------
+Dobel-klik: NYALAIN-UNIVMEET.bat   (di folder ini)
+
+Syarat: PC nyala + internet. Jendela tunnel jangan ditutup.
+
+MANUAL
+------
+  npm start
+  env -u ALL_PROXY -u HTTPS_PROXY -u HTTP_PROXY ~/tools/ngrok.exe http 3000
+
+CATATAN PENTING
+---------------
+- ngrok butuh koneksi langsung (JANGAN lewat Tor) — kalau lewat proxy, ngrok
+  menolak: "Invalid configuration property value for 'proxy'".
+- Token ngrok tersimpan di: %LOCALAPPDATA%\ngrok\ngrok.yml
+- Token pernah ditempel di chat -> sebaiknya di-rotate:
+  dashboard.ngrok.com/get-started/your-authtoken -> Revoke -> buat baru.
