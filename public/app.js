@@ -120,9 +120,22 @@
       return false;
     }
     try {
+      // Kualitas tinggi: minta 720p30 (WebRTC default hanya ~640x480 & bitrate kecil)
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000,
+        },
+        video: {
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 360 },
+          frameRate: { ideal: 30, min: 15, max: 30 },
+          facingMode: 'user',
+          resizeMode: 'none',
+        },
       });
       attachLocalTracks(stream);
       return true;
@@ -162,19 +175,107 @@
   }
 
   function pushVideoToPeers() {
-    const track = currentOutVideoTrack();
+    // kamera
     for (const p of S.peers.values()) {
       if (!p.videoSender) continue;
-      try { p.videoSender.replaceTrack(track); } catch (_) {}
+      try { p.videoSender.replaceTrack(camTrack()); } catch (_) {}
+    }
+    // layar (jalur terpisah -> tidak menimpa kamera)
+    pushScreenToPeers();
+    applyContentHint();
+    tuneAllSenders();
+  }
+
+  function pushScreenToPeers() {
+    const t = screenTrack();
+    for (const p of S.peers.values()) {
+      if (!p.screenSender) continue;
+      try { p.screenSender.replaceTrack(t); } catch (_) {}
     }
   }
 
-  function addRemoteTrack(peer, track) {
+  /* ------------------------------------------------------------------ */
+  /* Kualitas media: WebRTC default cuma ~300 kbps -> gambar jelek        */
+  /* Kita naikkan maxBitrate + atur prioritas & resolusi                  */
+  /* ------------------------------------------------------------------ */
+
+  const QUALITY = { camKbps: 2500, screenKbps: 4000, audioKbps: 64 };
+
+  // makin banyak peserta, makin kecil bitrate per-orang (mesh = uplink terbagi)
+  function bitrateForPeers(base) {
+    const n = Math.max(1, S.peers.size);
+    if (n <= 2) return base;
+    if (n <= 4) return Math.round(base * 0.6);
+    if (n <= 6) return Math.round(base * 0.45);
+    return Math.round(base * 0.32);
+  }
+
+  async function tuneSender(sender, kind) {
+    if (!sender || typeof sender.getParameters !== 'function') return;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      const isScreen = kind === 'screen';
+      const kbps = kind === 'audio'
+        ? QUALITY.audioKbps
+        : bitrateForPeers(isScreen ? QUALITY.screenKbps : QUALITY.camKbps);
+
+      for (const enc of params.encodings) {
+        enc.maxBitrate = kbps * 1000;
+        if (kind !== 'audio') {
+          enc.maxFramerate = isScreen ? 30 : 30;
+          enc.scaleResolutionDownBy = 1.0;
+        }
+        if ('priority' in enc) enc.priority = 'high';
+        if ('networkPriority' in enc) enc.networkPriority = 'high';
+      }
+      if (kind !== 'audio' && 'degradationPreference' in params) {
+        // layar: jangan turunkan resolusi (teks jadi burem)
+        params.degradationPreference = isScreen ? 'maintain-resolution' : 'balanced';
+      }
+      await sender.setParameters(params);
+      return true;
+    } catch (_) {
+      return false; // belum negosiasi / browser menolak -> aman diabaikan
+    }
+  }
+
+  function tuneAllSenders() {
+    for (const p of S.peers.values()) {
+      if (p.audioSender) tuneSender(p.audioSender, 'audio');
+      if (p.videoSender) tuneSender(p.videoSender, 'video');
+      if (p.screenSender) tuneSender(p.screenSender, 'screen');
+    }
+  }
+
+  function applyContentHint() {
+    if (S.videoTrack) { try { S.videoTrack.contentHint = 'motion'; } catch (_) {} }
+    if (S.screenStream) {
+      const t = S.screenStream.getVideoTracks()[0];
+      if (t) { try { t.contentHint = 'detail'; } catch (_) {} } // teks layar tetap tajam
+    }
+  }
+
+  function addRemoteTrack(peer, track, which = 'cam') {
     if (!track) return;
-    const existing = peer.remoteStream.getTracks().find((t) => t.kind === track.kind);
+    const target = which === 'screen' ? peer.screenStream : peer.remoteStream;
+    const existing = target.getTracks().find((t) => t.kind === track.kind);
     if (existing === track) return;
-    if (existing) peer.remoteStream.removeTrack(existing);
-    peer.remoteStream.addTrack(track);
+    if (existing) target.removeTrack(existing);
+    target.addTrack(track);
+
+    if (which === 'screen') {
+      // layar: tampilkan tile khusus saat track hidup, sembunyikan saat berhenti.
+      // CATATAN: event mute/unmute bisa kelewat (mis. track sudah unmute sebelum
+      // handler dipasang), jadi reconcileScreenTiles() juga dipanggil periodik.
+      const sync = () => { reconcileScreenTiles(); };
+      track.onunmute = sync;
+      track.onmute = sync;
+      track.onended = sync;
+      sync();
+      return;
+    }
+
     if (track.kind === 'video') {
       track.onunmute = () => updateTileState(peer.id, { camOff: false });
       track.onmute = () => updateTileState(peer.id, { camOff: true });
@@ -183,10 +284,18 @@
 
   // Receiver selalu ada untuk setiap m-line; ontrack kadang telat / tanpa MSID,
   // jadi kita rekonsiliasi langsung dari getReceivers().
+  // Urutan video: pertama = kamera, kedua = layar.
   function syncRemoteStream(peer) {
     try {
+      let videoIndex = 0;
       for (const r of peer.pc.getReceivers()) {
-        if (r.track) addRemoteTrack(peer, r.track);
+        if (!r.track) continue;
+        if (r.track.kind === 'audio') {
+          addRemoteTrack(peer, r.track, 'cam');
+        } else if (r.track.kind === 'video') {
+          addRemoteTrack(peer, r.track, videoIndex === 0 ? 'cam' : 'screen');
+          videoIndex++;
+        }
       }
     } catch (_) {}
     setTileVideo(peer.id, peer.remoteStream);
@@ -246,6 +355,95 @@
       el.grid.appendChild(tile);
     }
     return tile;
+  }
+
+  /* ---------- tile khusus share layar ---------- */
+
+  function screenTileId(id) { return 'tile-screen-' + id; }
+
+  function getScreenTile(id) { return document.getElementById(screenTileId(id)); }
+
+  function ensureScreenTile(id, name) {
+    let tile = getScreenTile(id);
+    if (tile) return tile;
+
+    tile = document.createElement('div');
+    tile.className = 'tile screen-tile';
+    tile.id = screenTileId(id);
+
+    const vid = document.createElement('video');
+    vid.autoplay = true;
+    vid.playsInline = true;
+    vid.muted = true; // audio tetap dari tile kamera (hindari dobel suara)
+
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = (name || 'Peserta') + ' — layar';
+    tag.appendChild(nm);
+
+    const badge = document.createElement('div');
+    badge.className = 'badge-screen';
+    badge.textContent = 'LAYAR';
+
+    tile.append(vid, tag, badge);
+    el.grid.appendChild(tile);
+    return tile;
+  }
+
+  function setScreenTileVideo(id, stream) {
+    const tile = getScreenTile(id);
+    if (!tile) return;
+    const vid = tile.querySelector('video');
+    if (vid && vid.srcObject !== stream) {
+      vid.srcObject = stream;
+      const pl = vid.play();
+      if (pl && pl.catch) pl.catch(() => {});
+    }
+  }
+
+  function removeScreenTile(id) {
+    const tile = getScreenTile(id);
+    if (tile) tile.remove();
+  }
+
+  function showLocalScreenTile() {
+    if (!S.screenStream) return;
+    const tile = ensureScreenTile('self', S.name);
+    setScreenTileVideo('self', S.screenStream);
+    const vid = tile.querySelector('video');
+    if (vid) vid.muted = true; // jangan dengar diri sendiri
+  }
+
+  function hideLocalScreenTile() {
+    removeScreenTile('self');
+  }
+
+  /**
+   * Sinkronkan tile layar dengan kenyataan (tidak bergantung event mute/unmute).
+   * Dipanggil periodik + setiap kali ada perubahan track.
+   */
+  function reconcileScreenTiles() {
+    for (const p of S.peers.values()) {
+      // p.screen datang dari server (peer-state) -> sumber kebenaran, instan saat berhenti.
+      // Kalau server bilang tidak share, tile langsung dibuang (hindari gambar beku).
+      if (!p.screen) {
+        removeScreenTile(p.id);
+        continue;
+      }
+      const track = p.screenStream.getVideoTracks()[0];
+      if (track && track.readyState === 'live') {
+        ensureScreenTile(p.id, p.name);
+        setScreenTileVideo(p.id, p.screenStream);
+      }
+    }
+    // tile layar milik sendiri
+    if (S.screenStream) {
+      showLocalScreenTile();
+    } else {
+      removeScreenTile('self');
+    }
   }
 
   function setTileVideo(id, stream) {
@@ -330,7 +528,6 @@
     }
     const wantAvatar = !!camOff && !screen;
     if (av) av.style.display = wantAvatar ? 'grid' : 'none';
-    tile.classList.toggle('screen', !!screen);
 
     let hostBadge = tile.querySelector('.badge-host');
     if (isHost && !hostBadge) {
@@ -340,16 +537,6 @@
       tile.appendChild(hostBadge);
     } else if (!isHost && hostBadge) {
       hostBadge.remove();
-    }
-
-    let screenBadge = tile.querySelector('.badge-screen');
-    if (screen && !screenBadge) {
-      screenBadge = document.createElement('div');
-      screenBadge.className = 'badge-screen';
-      screenBadge.textContent = 'LAYAR';
-      tile.appendChild(screenBadge);
-    } else if (!screen && screenBadge) {
-      screenBadge.remove();
     }
   }
 
@@ -365,8 +552,10 @@
   /* ------------------------------------------------------------------ */
 
   // Untuk sisi yang menjawab: pakai transceiver hasil offer, pasang track kita di sana.
+  // Urutan m-line: 0 = audio, 1 = kamera, 2 = layar (dibuat di createPeer).
   function adoptTransceivers(peer) {
     try {
+      let videoIndex = 0;
       for (const tx of peer.pc.getTransceivers()) {
         const kind = tx.receiver && tx.receiver.track ? tx.receiver.track.kind : null;
         if (!kind) continue;
@@ -376,12 +565,28 @@
           peer.audioSender = tx.sender;
           try { tx.sender.replaceTrack(S.micOn ? S.audioTrack : null); } catch (_) {}
         } else if (kind === 'video') {
-          peer.videoTx = tx;
-          peer.videoSender = tx.sender;
-          try { tx.sender.replaceTrack(currentOutVideoTrack()); } catch (_) {}
+          if (videoIndex === 0) {
+            peer.videoTx = tx;
+            peer.videoSender = tx.sender;
+            try { tx.sender.replaceTrack(camTrack()); } catch (_) {}
+          } else {
+            peer.screenTx = tx;
+            peer.screenSender = tx.sender;
+            try { tx.sender.replaceTrack(screenTrack()); } catch (_) {}
+          }
+          videoIndex++;
         }
       }
     } catch (_) {}
+  }
+
+  function camTrack() {
+    return S.camOn && S.videoTrack ? S.videoTrack : null;
+  }
+
+  function screenTrack() {
+    if (!S.screenStream) return null;
+    return S.screenStream.getVideoTracks()[0] || null;
   }
 
   function createPeer(id, initiator) {
@@ -397,15 +602,20 @@
       camOff: false,
       screen: false,
       remoteStream: new MediaStream(),
+      screenStream: new MediaStream(),
       pending: [],
       audioSender: null,
       videoSender: null,
+      screenSender: null,
     };
 
     // Kalau kita yang mulai (initiator): bikin transceiver sendiri + track + MSID.
     // Kalau kita yang menjawab: transceiver diadopsi dari offer (lihat adoptTransceivers),
     // karena transceiver lokal yang dibuat sebelum setRemoteDescription TIDAK terpasang
     // ke m-line offer -> jawaban jadi recvonly (media kita tidak terkirim).
+    //
+    // PENTING: jalur video DIPISAH — kamera dan layar punya transceiver sendiri.
+    // Dengan begitu banyak orang bisa share layar bersamaan tanpa saling menimpa kamera.
     if (initiator) {
       const ls = S.localStream || new MediaStream();
       peer.audioTx = S.audioTrack
@@ -414,12 +624,16 @@
       peer.videoTx = S.videoTrack
         ? pc.addTransceiver(S.videoTrack, { direction: 'sendrecv', streams: [ls] })
         : pc.addTransceiver('video', { direction: 'sendrecv' });
+      // jalur khusus share layar (kosong kalau tidak share)
+      peer.screenTx = pc.addTransceiver('video', { direction: 'sendrecv' });
       peer.audioSender = peer.audioTx.sender;
       peer.videoSender = peer.videoTx.sender;
+      peer.screenSender = peer.screenTx.sender;
 
       try {
         peer.audioSender.replaceTrack(S.micOn ? S.audioTrack : null);
-        peer.videoSender.replaceTrack(currentOutVideoTrack());
+        peer.videoSender.replaceTrack(camTrack());
+        peer.screenSender.replaceTrack(screenTrack());
       } catch (_) {}
     }
 
@@ -438,6 +652,9 @@
         const tile = getTile(id);
         if (tile) tile.classList.remove('connecting');
         syncRemoteStream(peer);
+        // setelah negosiasi selesai baru setParameters bisa diterima
+        tuneSender(peer.audioSender, 'audio');
+        tuneSender(peer.videoSender, 'video');
       } else if (st === 'failed' || st === 'disconnected' || st === 'closed') {
         // biarkan UI; cleanup terjadi saat peer-left
       }
@@ -535,6 +752,7 @@
     }
     const tile = getTile(id);
     if (tile) tile.remove();
+    removeScreenTile(id);
     syncGridCount();
     renderPeople();
   }
@@ -588,6 +806,7 @@
   function startLevelMonitor() {
     if (levelTimer) return;
     levelTimer = setInterval(async () => {
+      reconcileScreenTiles();
       for (const p of S.peers.values()) {
         try {
           const rep = await p.pc.getStats();
@@ -887,7 +1106,11 @@
     }
     S.camOn = !S.camOn;
     S.videoTrack.enabled = S.camOn;
-    if (!S.screenStream) pushVideoToPeers();
+    // kamera punya jalur sendiri -> selalu push, tidak peduli sedang share layar
+    for (const p of S.peers.values()) {
+      if (!p.videoSender) continue;
+      try { p.videoSender.replaceTrack(camTrack()); } catch (_) {}
+    }
     syncControls();
     broadcastState();
   }
@@ -965,8 +1188,8 @@
     let stream = null;
     let lastErr = null;
     const tries = [
-      { video: { frameRate: { ideal: 15, max: 30 } }, audio: false, selfBrowserSurface: 'include', surfaceSwitching: 'include', systemAudio: 'exclude' },
-      { video: { frameRate: 15 }, audio: false },
+      { video: { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false, selfBrowserSurface: 'include', surfaceSwitching: 'include', systemAudio: 'exclude' },
+      { video: { frameRate: { ideal: 30, max: 30 } }, audio: false },
       { video: true, audio: false },
     ];
     for (const opts of tries) {
@@ -996,32 +1219,20 @@
       }
       track.onended = () => stopScreen();
 
-      pushVideoToPeers();
+      // kirim lewat jalur layar (kamera tetap jalan di jalur sendiri)
+      pushScreenToPeers();
+      applyContentHint();
+      tuneAllSenders();
 
-      const tile = getTile(S.selfId);
-      if (tile) {
-        const vid = tile.querySelector('video');
-        if (vid) {
-          vid.srcObject = stream;
-          const pl = vid.play();
-          if (pl && pl.catch) pl.catch(() => {});
-        }
-        tile.classList.remove('mirror');
-      }
-      updateTileState(S.selfId, { name: S.name + ' (kamu)', muted: !S.micOn, camOff: false, screen: true, isHost: S.isHost });
+      // tile layar sendiri (kamera tetap di tile utama)
+      showLocalScreenTile();
+      updateTileState(S.selfId, { name: S.name + ' (kamu)', muted: !S.micOn, camOff: !S.camOn, screen: true, isHost: S.isHost });
       syncControls();
       broadcastState();
 
-      // verifikasi: kalau ada peer yang sender-nya belum ikut track layar, perbaiki
-      const t = currentOutVideoTrack();
+      // kalau ada peer yang belum punya jalur layar, tambahkan lalu negosiasi ulang
       for (const p of S.peers.values()) {
-        if (!p.videoSender) {
-          await repairVideoSender(p, t);
-          continue;
-        }
-        if (p.videoSender.track && t && p.videoSender.track.id !== t.id) {
-          try { await p.videoSender.replaceTrack(t); } catch (_) {}
-        }
+        if (!p.screenSender) await repairScreenSender(p, track);
       }
 
       toast('Sedang share layar');
@@ -1032,22 +1243,22 @@
     }
   }
 
-  // Kalau peer belum punya sender video (mis. dibuat saat kamera mati),
-  // tambahkan transceiver lalu negosiasi ulang.
-  async function repairVideoSender(peer, track) {
+  // Kalau peer belum punya jalur layar (mis. peer lama), tambahkan lalu negosiasi ulang.
+  async function repairScreenSender(peer, track) {
     try {
-      const tx = peer.pc.addTransceiver(track || 'video', { direction: 'sendrecv', streams: S.localStream ? [S.localStream] : [] });
-      peer.videoTx = tx;
-      peer.videoSender = tx.sender;
+      const tx = peer.pc.addTransceiver(track || 'video', { direction: 'sendrecv' });
+      peer.screenTx = tx;
+      peer.screenSender = tx.sender;
       if (track) { try { await tx.sender.replaceTrack(track); } catch (_) {} }
 
       if (peer.initiator) {
         const offer = await peer.pc.createOffer();
+        offer.sdp = tuneAudioSdp(offer.sdp);
         await peer.pc.setLocalDescription(offer);
         sendSignal(peer.id, { type: 'offer', sdp: peer.pc.localDescription });
       }
     } catch (err) {
-      console.warn('[univmeet] repairVideoSender gagal:', err);
+      console.warn('[univmeet] repairScreenSender gagal:', err);
     }
   }
 
@@ -1161,14 +1372,11 @@
       try { t.stop(); } catch (_) {}
     }
     S.screenStream = null;
-    pushVideoToPeers();
 
-    const tile = getTile(S.selfId);
-    if (tile) {
-      const vid = tile.querySelector('video');
-      if (vid) vid.srcObject = S.localStream;
-      tile.classList.add('mirror');
-    }
+    // kosongkan jalur layar saja — kamera tidak disentuh
+    pushScreenToPeers();
+    hideLocalScreenTile();
+
     updateTileState(S.selfId, { name: S.name + ' (kamu)', muted: !S.micOn, camOff: !S.camOn, screen: false, isHost: S.isHost });
     syncControls();
     broadcastState();

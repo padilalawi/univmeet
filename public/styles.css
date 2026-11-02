@@ -363,3 +363,13 @@ input { font-family: inherit; }
 /* indikator bicara */
 .tile.speaking { box-shadow: inset 0 0 0 2px rgba(34, 197, 94, .85); }
 .tile.speaking .tag { background: rgba(22, 101, 52, .85); }
+
+/* tile share layar: lebar penuh supaya teks kebaca */
+.tile.screen-tile {
+  grid-column: 1 / -1;
+  min-height: 220px;
+  background: #05080f;
+  border-color: #2f6b4a;
+}
+.tile.screen-tile video { object-fit: contain; }
+.tile.screen-tile .badge-screen { top: 8px; right: 8px; }

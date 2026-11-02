@@ -132,6 +132,7 @@ async function main() {
       const p = [...S.peers.values()][0];
       const selfTile = document.getElementById('tile-' + S.selfId);
       const btnActive = document.getElementById('btn-screen').classList.contains('active');
+      const selfScreenTile = document.getElementById('tile-screen-self');
       // bukti share layar benar-benar sampai: framesDecoded bertambah SETELAH share,
       // dan resolusi video tamu ikut berubah (kamera 1280x720 -> layar 800x450).
       const stats = {};
@@ -141,9 +142,10 @@ async function main() {
       }
       return {
         screenStream: !!S.screenStream,
-        senderMatchesScreen: !!(p && p.videoSender && p.videoSender.track && S.screenStream && p.videoSender.track.id === S.screenStream.getVideoTracks()[0].id),
-        localTileHasStream: !!(selfTile && selfTile.querySelector('video') && selfTile.querySelector('video').srcObject),
-        localTileNotMirror: !!(selfTile && !selfTile.classList.contains('mirror')),
+        senderMatchesScreen: !!(p && p.screenSender && p.screenSender.track && S.screenStream && p.screenSender.track.id === S.screenStream.getVideoTracks()[0].id),
+        localScreenTile: !!selfScreenTile,
+        localScreenTileW: selfScreenTile ? selfScreenTile.querySelector('video').videoWidth : 0,
+        camTileStillVideo: !!(selfTile && selfTile.querySelector('video').srcObject),
         btnActive,
         stats,
       };
@@ -162,11 +164,17 @@ async function main() {
         rep.forEach(s => { if (s.type === 'inbound-rtp' && s.kind === 'video') stats.in_video = { bytes: s.bytesReceived, frames: s.framesDecoded, w: s.frameWidth }; });
       }
       const vids = [...document.querySelectorAll('#grid video')].map(v => ({ w: v.videoWidth, h: v.videoHeight }));
+      const guestScreenTiles = [...document.querySelectorAll('#grid .tile.screen-tile')].map(t => ({
+        id: t.id,
+        isSelf: t.id === 'tile-screen-self',
+        w: t.querySelector('video').videoWidth,
+      }));
       return {
         remoteTrackIds: p ? p.remoteStream.getTracks().map(t => t.kind + ':' + t.id) : [],
         peerScreenFlag: p ? p.screen : null,
         stats,
         vids,
+        guestScreenTiles,
         tileClasses: [...document.querySelectorAll('#grid .tile')].map(t => t.className),
       };
     })()`);
@@ -188,11 +196,11 @@ async function main() {
     out.verdict = {
       'getDisplayMedia dapat stream': !!shareResult.screenStream,
       'sender host pakai track layar': shareResult.senderMatchesScreen === true,
-      'tile lokal pakai stream layar': shareResult.localTileHasStream === true,
-      'tile lokal tidak mirror saat share': shareResult.localTileNotMirror === true,
+      'tile lokal pakai stream layar': shareResult.localScreenTile === true && shareResult.localScreenTileW > 0,
+      'tile kamera tetap jalan saat share': shareResult.camTileStillVideo === true,
       'tombol layar jadi aktif': shareResult.btnActive === true,
       'tamu: frame terus bertambah': framesGrew,
-      'tamu: resolusi berubah jadi layar': resChanged,
+      'tamu punya tile layar host': (guestView.guestScreenTiles || []).some(t => !t.isSelf && t.w > 0),
       'tamu: frameWidth > 0': !!(afterStats.w > 0),
       'flag screen sampai ke tamu': guestView.peerScreenFlag === true,
       'badge LAYAR muncul di tile tamu': (guestView.tileClasses || []).some((c) => /screen/.test(c)),
