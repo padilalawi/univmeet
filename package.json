@@ -10,8 +10,16 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "worker:dev": "wrangler dev",
-    "worker:deploy": "wrangler deploy"
+    "test": "node test/e2e-webrtc.js && node test/e2e-screen.js && node test/e2e-multishare.js && node test/audio-check.js",
+    "test:webrtc": "node test/e2e-webrtc.js",
+    "test:screen": "node test/e2e-screen.js",
+    "test:multishare": "node test/e2e-multishare.js",
+    "test:audio": "node test/audio-check.js",
+    "shots": "node test/screenshot.js",
+    "worker:dev": "wrangler dev --config wrangler.worker.jsonc",
+    "worker:deploy": "wrangler deploy --config wrangler.worker.jsonc",
+    "pages:deploy": "wrangler pages deploy --project-name univmeet --branch main --commit-dirty=true",
+    "deploy": "npm run worker:deploy && npm run pages:deploy"
   },
   "dependencies": {
     "express": "^4.21.2",

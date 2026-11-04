@@ -4,3 +4,9 @@ npm-debug.log*
 Thumbs.db
 .env
 *.log
+
+# cache wrangler (dibuat ulang otomatis)
+.wrangler/
+
+# arsip / catatan lokal
+docs/archive/

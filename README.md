@@ -2,7 +2,7 @@
 
 Rapat & kuliah online gratis — video langsung antar browser (WebRTC P2P), tanpa install, tanpa akun.
 
-**Live: https://univmeet.pages.dev** (gratis, tanpa kartu kredit, PC boleh mati)
+**Live: https://univmeet.pages.dev** · gratis · tanpa kartu kredit · PC boleh dimatikan
 
 ---
 
@@ -10,177 +10,159 @@ Rapat & kuliah online gratis — video langsung antar browser (WebRTC P2P), tanp
 
 | Fitur | Keterangan |
 |---|---|
-| Video + suara | P2P antar peserta (server cuma atur sinyal, video tidak lewat server) |
-| Kualitas kamera | 720p30, bitrate sampai 2.5 Mbps (WebRTC default cuma ~300 kbps) |
+| Video + suara | P2P antar peserta — video **tidak** lewat server |
+| Kualitas kamera | 720p30, bitrate sampai 2.5 Mbps (default WebRTC cuma ~300 kbps) |
 | Share layar | Jalur video **terpisah** — semua peserta bisa share bersamaan, kamera tetap terlihat. 1080p30, sampai 4 Mbps |
-| Volume peserta | Slider volume + indikator bicara (tile menyala hijau) |
+| Audio | Opus FEC 64 kbps + slider volume + indikator bicara (tile menyala hijau) |
 | Chat rapat | Real-time, ada badge pesan belum dibaca |
 | Kunci rapat | Host bisa tolak peserta baru |
 | Keluarkan peserta | Host bisa kick |
-| Auto-promote host | Kalau host keluar, peserta pertama otomatis jadi host |
-| Link undangan | `univmeet.online/r/kode-rapat` — 1 klik langsung masuk (nama tersimpan) |
+| Auto-promote host | Host keluar → peserta pertama otomatis jadi host |
+| Link undangan | `/r/kode-rapat` — 1 klik langsung masuk (nama tersimpan) |
 | Tanpa media | Kalau kamera/mic ditolak, tetap bisa masuk & chat |
 
-Kapasitas default **8 orang per rapat** (mesh P2P — makin banyak makin berat di CPU/upload). Ubah lewat env `MAX_PEERS`.
+Kapasitas default **8 orang per rapat** (mesh P2P — makin banyak makin berat CPU/upload).
+Ubah lewat env `MAX_PEERS`.
 
----
-
-## Jalankan di komputer sendiri
-
-```bash
-cd "C:\Users\DIZZO KINTIL\hermes project\web\univmeet"
-npm install
-npm start
-```
-
-Buka **http://localhost:3000**
-
-> Catatan: kamera/mikrofon hanya jalan di `localhost` atau HTTPS. Kalau dibuka lewat IP LAN (`http://192.168.x.x:3000`), browser akan blokir kamera.
+> **Share layar hanya bisa dari laptop/PC di tab browser.** Browser HP tidak punya API-nya,
+> dan di dalam iframe (panel preview/embed) diblokir browser. Aplikasi akan menjelaskan
+> hal ini kalau dicoba dari tempat yang tidak didukung.
 
 ---
 
 ## Cara pakai
 
 1. Isi nama → klik **Buat rapat baru**
-2. Klik kode rapat di atas (atau tombol **Copy link rapat**) → kirim ke peserta
+2. Klik kode rapat di atas (atau **Copy link rapat**) → kirim ke peserta
 3. Peserta buka link → isi nama → langsung masuk
-4. Kalau mau rapat tertutup: klik **Kunci**
+4. Mau rapat tertutup? Klik **Kunci**
 
 ---
 
-## Struktur
+## Struktur folder
 
 ```
 univmeet/
-├── server.js              # Express + Socket.IO (signaling + static)
-├── public/
-│   ├── index.html         # landing + ruang rapat
-│   ├── styles.css         # tema dark
-│   └── app.js             # logika WebRTC mesh
-├── test/
-│   ├── e2e-webrtc.js      # tes otomatis 3 tab (video/audio/chat/lock/host)
-│   ├── debug-media.js     # dump sender/ICE/stats kalau ada masalah media
-│   └── screenshot.js      # ambil screenshot UI
-└── screenshots/           # hasil screenshot
+├── server.js                 # server Node lokal (Express + ws)
+├── lib/
+│   └── protocol.js           # logika protokol — dipakai Node & Cloudflare
+├── src/
+│   └── worker.js             # Cloudflare Worker + Durable Object "RoomDO"
+├── functions/                # Cloudflare Pages Functions
+│   ├── ws.js                 #   /ws  → WebSocket signaling
+│   ├── config.js             #   /config → STUN/TURN
+│   └── healthz.js            #   /healthz
+├── public/                   # yang dikirim ke browser
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.js                # logika WebRTC mesh
+│   ├── net.js                # klien WebSocket (pengganti Socket.IO)
+│   ├── _redirects            # /r/* → /
+│   └── _headers              # no-cache untuk HTML/JS
+├── test/                     # tes otomatis (butuh Chrome)
+│   ├── e2e-webrtc.js         #   video/suara/chat/lock/host
+│   ├── e2e-screen.js         #   share layar
+│   ├── e2e-multishare.js     #   dua orang share bersamaan
+│   ├── audio-check.js        #   Opus FEC, volume, indikator bicara
+│   ├── screenshot.js         #   ambil screenshot UI
+│   └── debug/                #   alat diagnosa (bukan bagian app)
+├── scripts/
+│   └── NYALAIN-UNIVMEET.bat  # launcher lokal + tunnel (opsional)
+├── docs/
+│   ├── URL-DAN-DEPLOY.md     # URL, arsitektur, cara deploy/update
+│   ├── screenshots/
+│   └── archive/              # catatan lama (render.yaml, dll)
+├── wrangler.jsonc            # konfigurasi Cloudflare Pages
+└── wrangler.worker.jsonc     # konfigurasi Cloudflare Worker
 ```
 
-Endpoint server:
+Endpoint:
 
 | Path | Fungsi |
 |---|---|
 | `/` | landing |
 | `/r/:kode` | ruang rapat |
+| `/ws?room=<kode>` | WebSocket signaling |
 | `/config` | daftar STUN/TURN + max peserta |
-| `/healthz` | status server (rooms, people, uptime) |
+| `/healthz` | status server |
+
+---
+
+## Jalankan lokal
+
+```bash
+cd "C:\Users\DIZZO KINTIL\hermes project\web\univmeet"
+npm install
+npm start          # -> http://localhost:3000
+```
+
+Atau dobel-klik `scripts\NYALAIN-UNIVMEET.bat`.
+
+> Kamera/mikrofon hanya jalan di `localhost` atau HTTPS. Lewat IP LAN
+> (`http://192.168.x.x:3000`) browser akan blokir.
 
 ---
 
 ## Test otomatis
 
 ```bash
-npm start          # terminal 1
-node test/e2e-webrtc.js   # terminal 2
+npm start                          # terminal 1
+
+# tes terhadap server lokal
+node test/e2e-webrtc.js
+node test/e2e-screen.js
+node test/e2e-multishare.js
+node test/audio-check.js
+
+# tes terhadap versi ONLINE
+BASE_URL="https://univmeet.pages.dev" node test/e2e-multishare.js
 ```
 
-Yang diverifikasi: 2 peer `connected`, audio+video dua arah benar-benar mengalir (videoWidth > 0),
-chat terkirim, status mute tersinkron, kunci rapat menolak orang baru, host keluar → peserta naik jadi host.
+Butuh Chrome di `C:/Program Files/Google/Chrome/Application/chrome.exe`
+(bisa diubah via env `CHROME_PATH`). Tes memakai kamera palsu
+(`--use-fake-device-for-media-stream`), jadi tidak minta izin kamera.
 
-Butuh Chrome di `C:/Program Files/Google/Chrome/Application/chrome.exe` (bisa diubah via env `CHROME_PATH`).
-Tes pakai kamera palsu (`--use-fake-device-for-media-stream`) jadi tidak minta izin kamera.
+Yang dibuktikan (bukan cuma "connected"): `videoWidth > 0`, `framesDecoded` bertambah,
+audio bytes bertambah, tile layar muncul dengan frame, bitrate terpasang, chat terkirim,
+lock menolak orang baru, host keluar → peserta naik jadi host.
 
 ---
 
-## Deploy ke internet (gratis) — Render
+## Deploy & update
 
-1. **Push ke GitHub**
-   ```bash
-   git init && git add . && git commit -m "univmeet v1"
-   gh repo create univmeet --public --source=. --push
-   ```
-2. Buka [render.com](https://render.com) → **New +** → **Web Service** → pilih repo `univmeet`
-3. Isi:
-   - **Runtime**: Node
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-   - **Instance type**: Free
-4. Deploy → dapat URL `https://univmeet-xxxx.onrender.com` (HTTPS otomatis, WebSocket jalan)
+Lihat **[docs/URL-DAN-DEPLOY.md](docs/URL-DAN-DEPLOY.md)**.
 
-> Free plan Render tidur setelah ~15 menit tanpa trafik; request pertama bangun ~30 detik.
-> Kalau mau selalu panas, pakai Railway/Fly.io atau VPS kecil.
-
-### Alternatif VPS (nginx + HTTPS)
+Ringkasnya:
 
 ```bash
-# di server
-git clone <repo> && cd univmeet && npm install --omit=dev
-PORT=3000 node server.js        # jalankan pakai pm2/systemd
-```
-```nginx
-server {
-  server_name univmeet.online;
-  location / {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;      # wajib untuk WebSocket
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-  }
-}
-```
-```bash
-certbot --nginx -d univmeet.online -d www.univmeet.online   # HTTPS gratis
+npx wrangler deploy --config wrangler.worker.jsonc                    # worker/DO
+npx wrangler pages deploy --project-name univmeet --branch main --commit-dirty=true
 ```
 
 ---
 
-## Pasang domain univmeet.online
+## TURN server
 
-1. Beli domain di registrar (Cloudflare / Namecheap / Niagahoster). Sekarang domain ini
-   **belum terdaftar** — masih bisa dibeli.
-2. Di dashboard hosting (Render: **Settings → Custom Domain**), tambahkan:
-   - `univmeet.online`
-   - `www.univmeet.online`
-3. Di DNS registrar, buat record sesuai instruksi hosting. Umumnya:
-
-| Type | Name | Value |
-|---|---|---|
-| CNAME | `www` | `univmeet-xxxx.onrender.com` |
-| ALIAS / ANAME / CNAME | `@` (root) | `univmeet-xxxx.onrender.com` |
-
-> Registrar yang tidak mendukung ALIAS di root: pakai Cloudflare (proxy) atau arahkan
-> `@` ke IP hosting lewat record `A`.
-
-4. Tunggu propagasi DNS (5 menit–24 jam). Cek:
-   ```bash
-   nslookup univmeet.online 8.8.8.8
-   ```
-
----
-
-## TURN server (penting untuk peserta di jaringan ketat)
-
-Default memakai TURN publik `openrelay.metered.ca` — cukup untuk coba-coba, tapi bisa lambat/limit.
-Untuk produksi, pakai kredensial TURN sendiri (mis. Metered / Twilio / coturn):
+Default memakai TURN publik `openrelay.metered.ca` — cukup untuk coba-coba.
+Untuk produksi, pakai kredensial sendiri (Metered / Twilio / coturn):
 
 ```bash
-TURN_URL="turn:turn.univmeet.online:3478,turns:turn.univmeet.online:5349" \
+TURN_URL="turn:turn.domainmu.com:3478,turns:turn.domainmu.com:5349" \
 TURN_USER="user" TURN_PASS="pass" npm start
 ```
 
-Server otomatis mengirim kredensial itu ke browser lewat `/config`.
-
-Tanpa TURN, sebagian peserta (di balik NAT simetris / jaringan kampus ketat) bisa gagal terhubung.
+Tanpa TURN, sebagian peserta (NAT simetris / jaringan kampus ketat) bisa gagal terhubung.
 
 ---
 
-## Batasan yang perlu diketahui
+## Batasan
 
-- **Mesh P2P**: tiap peserta mengirim stream ke semua peserta lain. 8 orang = 7 koneksi per orang.
-  Di atas 8–10 peserta, kualitas turun (butuh SFU seperti mediasoup/LiveKit kalau mau banyak).
+- **Mesh P2P**: tiap peserta mengirim stream ke semua peserta lain. 8 orang = 7 koneksi/orang.
+  Di atas 8–10 peserta kualitas turun (butuh SFU seperti mediasoup/LiveKit).
 - **Butuh HTTPS** untuk kamera/mikrofon (kecuali localhost).
-- **Belum ada rekaman rapat** dan belum ada login/akun.
-- State rapat disimpan di memori server → restart server = semua rapat bubar.
+- Belum ada rekaman rapat dan belum ada login/akun.
+- State rapat ada di memori Durable Object → tidak ada database.
 
 ---
 
-© UnivMeet — univmeet.online
+© UnivMeet

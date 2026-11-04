@@ -10,7 +10,7 @@ const BASE = process.env.BASE_URL || `http://localhost:${PORT}`;
 const CDP_PORT = 9335;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = path.join(os.tmpdir(), 'univmeet-shot-profile');
-const OUT = path.join(__dirname, '..', 'screenshots');
+const OUT = path.join(__dirname, '..', 'docs', 'screenshots');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
