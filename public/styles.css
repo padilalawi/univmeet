@@ -172,6 +172,12 @@ input { font-family: inherit; }
 .dot-live.off { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245, 158, 11, .14); }
 .room-right { display: flex; align-items: center; gap: 10px; }
 .people { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.quality {
+  color: #7dd3fc; font-size: 11.5px; font-weight: 700; white-space: nowrap;
+  background: rgba(14, 165, 233, .12); border: 1px solid rgba(14, 165, 233, .3);
+  padding: 4px 9px; border-radius: 999px;
+}
+@media (max-width: 900px) { .quality { display: none; } }
 @media (max-width: 640px) {
   .room-top .brand-name { display: none; }
   .people { display: none; }
@@ -191,6 +197,30 @@ input { font-family: inherit; }
 @media (max-width: 700px) {
   .grid[data-count="2"] { grid-template-columns: 1fr; }
 }
+
+/* ruangan rame: tile mengecil supaya semua kelihatan */
+.grid[data-count="9"], .grid[data-count="10"], .grid[data-count="11"], .grid[data-count="12"] {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.grid[data-count="13"], .grid[data-count="14"], .grid[data-count="15"], .grid[data-count="16"] {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+}
+.grid[data-count="17"], .grid[data-count="18"], .grid[data-count="19"], .grid[data-count="20"],
+.grid[data-count="21"], .grid[data-count="22"], .grid[data-count="23"], .grid[data-count="24"],
+.grid[data-count="25"], .grid[data-count="26"], .grid[data-count="27"], .grid[data-count="28"],
+.grid[data-count="29"], .grid[data-count="30"] {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+}
+.grid[data-count="9"] .tile .avatar,
+.grid[data-count="13"] .tile .avatar,
+.grid[data-count="17"] .tile .avatar { width: 40px; height: 40px; font-size: 15px; }
+.grid[data-count="9"] .tile .tag,
+.grid[data-count="13"] .tile .tag,
+.grid[data-count="17"] .tile .tag { font-size: 10.5px; padding: 3px 7px; }
+.grid[data-count="13"] .tile,
+.grid[data-count="17"] .tile { min-height: 96px; border-radius: 10px; }
 
 .tile {
   position: relative; background: #0d1220; border: 1px solid var(--line);

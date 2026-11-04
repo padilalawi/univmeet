@@ -21,8 +21,27 @@ Rapat & kuliah online gratis — video langsung antar browser (WebRTC P2P), tanp
 | Link undangan | `/r/kode-rapat` — 1 klik langsung masuk (nama tersimpan) |
 | Tanpa media | Kalau kamera/mic ditolak, tetap bisa masuk & chat |
 
-Kapasitas default **8 orang per rapat** (mesh P2P — makin banyak makin berat CPU/upload).
-Ubah lewat env `MAX_PEERS`.
+Kapasitas default **20 orang per rapat** (bisa diubah 2–30 lewat env `MAX_PEERS`).
+Kualitas video **turun otomatis** saat peserta bertambah, karena arsitektur mesh:
+tiap orang mengirim video ke semua orang lain (upload terbagi rata).
+
+| Peserta | Bitrate kamera/stream | Upload yang dibutuhkan |
+|---|---|---|
+| 2–3 | 2500 kbps (720p) | ~2,5 Mbps |
+| 4–5 | 1400 kbps (720p) | ~5,6 Mbps |
+| 6–7 | 900 kbps (720p) | ~5,4 Mbps |
+| 8–9 | 600 kbps (540p) | ~4,2 Mbps |
+| 10–13 | 380 kbps (480p) | ~4,2 Mbps |
+| 14–17 | 260 kbps (480p) | ~4 Mbps |
+| 18–21 | 190 kbps (360p) | ~3,6 Mbps |
+| 22–30 | 140 kbps (360p) | ~4 Mbps |
+
+> Angka "upload" itu **total** yang harus disanggupi satu peserta. Kalau upload internet
+> lu lebih kecil dari itu, browser otomatis menurunkan kualitas lebih jauh — itu batas
+> jaringan, bukan bug aplikasi. Untuk 30 orang dengan kualitas bagus, perlu arsitektur
+> SFU (server media), bukan mesh.
+
+Badge di kanan atas ruang rapat menunjukkan jumlah peserta + bitrate yang sedang dipakai.
 
 > **Share layar hanya bisa dari laptop/PC di tab browser.** Browser HP tidak punya API-nya,
 > dan di dalam iframe (panel preview/embed) diblokir browser. Aplikasi akan menjelaskan
@@ -64,6 +83,8 @@ univmeet/
 │   ├── e2e-screen.js         #   share layar
 │   ├── e2e-multishare.js     #   dua orang share bersamaan
 │   ├── audio-check.js        #   Opus FEC, volume, indikator bicara
+│   ├── capacity-check.js     #   batas MAX_PEERS (pakai WebSocket polos)
+│   ├── quality-scale.js      #   bitrate turun otomatis saat peserta nambah
 │   ├── screenshot.js         #   ambil screenshot UI
 │   └── debug/                #   alat diagnosa (bukan bagian app)
 ├── scripts/
@@ -113,9 +134,13 @@ node test/e2e-webrtc.js
 node test/e2e-screen.js
 node test/e2e-multishare.js
 node test/audio-check.js
+node test/capacity-check.js        # cek batas MAX_PEERS
+node test/quality-scale.js         # cek bitrate turun otomatis
 
 # tes terhadap versi ONLINE
 BASE_URL="https://univmeet.pages.dev" node test/e2e-multishare.js
+BASE_URL="https://univmeet.pages.dev" node test/capacity-check.js
+EXPECT=30 BASE_URL="https://univmeet.pages.dev" node test/capacity-check.js   # kalau MAX_PEERS diubah
 ```
 
 Butuh Chrome di `C:/Program Files/Google/Chrome/Application/chrome.exe`
@@ -157,8 +182,11 @@ Tanpa TURN, sebagian peserta (NAT simetris / jaringan kampus ketat) bisa gagal t
 
 ## Batasan
 
-- **Mesh P2P**: tiap peserta mengirim stream ke semua peserta lain. 8 orang = 7 koneksi/orang.
-  Di atas 8–10 peserta kualitas turun (butuh SFU seperti mediasoup/LiveKit).
+- **Mesh P2P**: tiap peserta mengirim stream ke semua peserta lain. 20 orang = 19 koneksi/orang.
+  Karena itu bitrate diturunkan otomatis (lihat tabel di atas). Untuk 30+ peserta dengan
+  kualitas bagus, perlu SFU (mediasoup/LiveKit) — bukan mesh.
+- **Ubah kapasitas**: set env `MAX_PEERS` (2–30) di `wrangler.jsonc` + `wrangler.worker.jsonc`,
+  lalu deploy ulang. Default 20.
 - **Butuh HTTPS** untuk kamera/mikrofon (kecuali localhost).
 - Belum ada rekaman rapat dan belum ada login/akun.
 - State rapat ada di memori Durable Object → tidak ada database.

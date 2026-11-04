@@ -10,7 +10,12 @@ import protocol from '../lib/protocol.js';
 
 const { Room, cleanRoomId, iceServersFromEnv } = protocol;
 
-const MAX_PEERS = 8;
+// `env` tidak tersedia di scope modul (Workers), jadi dihitung di dalam handler.
+function maxPeersFrom(env) {
+  const n = Number(env && env.MAX_PEERS);
+  if (!Number.isFinite(n)) return 20;
+  return Math.max(2, Math.min(30, n));
+}
 
 /* ==================================================================== */
 /* Durable Object: satu instance = satu ruang rapat                      */
@@ -44,7 +49,7 @@ export class RoomDO {
     const meta = (await this.state.storage.get('meta')) || {};
 
     const room = new Room({
-      maxPeers: MAX_PEERS,
+      maxPeers: maxPeersFrom(this.env),
       send: (clientId, event, data) => this.sendTo(clientId, event, data),
       broadcast: (event, data, exceptId) => this.broadcastAll(event, data, exceptId),
     });
@@ -251,7 +256,7 @@ export default {
     // --- konfigurasi ICE ---
     if (url.pathname === '/config') {
       return new Response(
-        JSON.stringify({ iceServers: iceServersFromEnv(env), maxPeers: MAX_PEERS }),
+        JSON.stringify({ iceServers: iceServersFromEnv(env), maxPeers: maxPeersFrom(env) }),
         { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }
       );
     }

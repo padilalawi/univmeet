@@ -1,13 +1,17 @@
-/*
-  Jangan cache HTML/JS supaya update langsung kepakai di browser pengguna.
-*/
-/index.html
-  Cache-Control: no-store
+# Jangan cache HTML/JS supaya update langsung kepakai di browser pengguna.
+# (komentar harus pakai '#' — '/*' akan dibaca sebagai pola path dan bikin error)
+
 /
   Cache-Control: no-store
+
+/index.html
+  Cache-Control: no-store
+
 /app.js
   Cache-Control: no-store
+
 /net.js
   Cache-Control: no-store
+
 /styles.css
   Cache-Control: no-cache

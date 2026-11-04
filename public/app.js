@@ -201,42 +201,79 @@
 
   const QUALITY = { camKbps: 2500, screenKbps: 4000, audioKbps: 64 };
 
-  // makin banyak peserta, makin kecil bitrate per-orang (mesh = uplink terbagi)
-  function bitrateForPeers(base) {
-    const n = Math.max(1, S.peers.size);
-    if (n <= 2) return base;
-    if (n <= 4) return Math.round(base * 0.6);
-    if (n <= 6) return Math.round(base * 0.45);
-    return Math.round(base * 0.32);
+  /**
+   * Mesh: tiap orang upload ke SEMUA orang lain.
+   * Jadi bitrate per-stream HARUS turun tajam saat peserta bertambah,
+   * kalau tidak uplink habis dan semua peserta dapat gambar rusak.
+   * Tabel di bawah = anggaran per stream (kbps) berdasarkan jumlah peserta.
+   */
+  function qualityTier(n) {
+    if (n <= 2) return { cam: 2500, screen: 4000, maxH: 720, scale: 1.0 };
+    if (n <= 4) return { cam: 1400, screen: 2500, maxH: 720, scale: 1.0 };
+    if (n <= 6) return { cam: 900, screen: 1800, maxH: 720, scale: 1.0 };
+    if (n <= 8) return { cam: 600, screen: 1200, maxH: 540, scale: 1.0 };
+    if (n <= 12) return { cam: 380, screen: 900, maxH: 480, scale: 1.0 };
+    if (n <= 16) return { cam: 260, screen: 700, maxH: 480, scale: 1.5 };
+    if (n <= 20) return { cam: 190, screen: 550, maxH: 360, scale: 2.0 };
+    return { cam: 140, screen: 420, maxH: 360, scale: 2.5 };
   }
 
-  async function tuneSender(sender, kind) {
-    if (!sender || typeof sender.getParameters !== 'function') return;
+  function currentTier() {
+    return qualityTier(Math.max(1, S.peers.size));
+  }
+
+  async function tuneSender(sender, kind, attempt = 0) {
+    if (!sender || typeof sender.getParameters !== 'function') return false;
+
+    let params;
+    try { params = sender.getParameters(); } catch (_) { return false; }
+
+    // Sebelum negosiasi selesai, encodings masih kosong. JANGAN bikin encodings
+    // palsu (Chrome menolak: InvalidModificationError) -> tunggu lalu coba lagi.
+    if (!params.encodings || params.encodings.length === 0) {
+      if (attempt < 8) {
+        setTimeout(() => tuneSender(sender, kind, attempt + 1), 300 * (attempt + 1));
+      }
+      return false;
+    }
+
     try {
-      const params = sender.getParameters();
-      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      const tier = currentTier();
       const isScreen = kind === 'screen';
-      const kbps = kind === 'audio'
-        ? QUALITY.audioKbps
-        : bitrateForPeers(isScreen ? QUALITY.screenKbps : QUALITY.camKbps);
+      const kbps = kind === 'audio' ? QUALITY.audioKbps : (isScreen ? tier.screen : tier.cam);
+      const wantBitrate = kbps * 1000;
+      const wantScale = kind === 'audio' ? 1 : (isScreen ? 1.0 : tier.scale);
+
+      // sudah sesuai -> tidak perlu setParameters (hindari kerja sia-sia)
+      const enc0 = params.encodings[0];
+      if (enc0 && enc0.maxBitrate === wantBitrate && (kind === 'audio' || enc0.scaleResolutionDownBy === wantScale)) {
+        return true;
+      }
 
       for (const enc of params.encodings) {
-        enc.maxBitrate = kbps * 1000;
+        enc.maxBitrate = wantBitrate;
         if (kind !== 'audio') {
-          enc.maxFramerate = isScreen ? 30 : 30;
-          enc.scaleResolutionDownBy = 1.0;
+          enc.maxFramerate = 30;
+          // kamera: turunkan resolusi saat peserta banyak (layar jangan, teks jadi burem)
+          enc.scaleResolutionDownBy = wantScale;
         }
         if ('priority' in enc) enc.priority = 'high';
         if ('networkPriority' in enc) enc.networkPriority = 'high';
       }
       if (kind !== 'audio' && 'degradationPreference' in params) {
-        // layar: jangan turunkan resolusi (teks jadi burem)
         params.degradationPreference = isScreen ? 'maintain-resolution' : 'balanced';
       }
+
       await sender.setParameters(params);
       return true;
-    } catch (_) {
-      return false; // belum negosiasi / browser menolak -> aman diabaikan
+    } catch (err) {
+      // gagal (mis. transceiver belum siap) -> coba lagi dengan jeda
+      if (attempt < 8) {
+        setTimeout(() => tuneSender(sender, kind, attempt + 1), 300 * (attempt + 1));
+      } else {
+        console.warn('[univmeet] setParameters gagal:', kind, err && err.name);
+      }
+      return false;
     }
   }
 
@@ -246,6 +283,20 @@
       if (p.videoSender) tuneSender(p.videoSender, 'video');
       if (p.screenSender) tuneSender(p.screenSender, 'screen');
     }
+    updateQualityBadge();
+  }
+
+  /** Tampilkan kualitas yang sedang dipakai (biar tidak ada teka-teki). */
+  function updateQualityBadge() {
+    const elq = document.getElementById('quality-badge');
+    if (!elq) return;
+    const n = Math.max(1, S.peers.size);
+    const tier = currentTier();
+    const label = S.screenStream ? `layar ${tier.screen}k` : `kamera ${tier.cam}k`;
+    elq.textContent = `${n} orang · ${label}`;
+    elq.title = n >= 12
+      ? 'Peserta banyak: kualitas diturunkan otomatis supaya semua tetap lancar (batas upload).'
+      : 'Kualitas menyesuaikan jumlah peserta.';
   }
 
   function applyContentHint() {
@@ -542,9 +593,10 @@
 
   function syncGridCount() {
     const total = 1 + S.peers.size;
-    el.grid.dataset.count = String(Math.min(total, 9));
+    el.grid.dataset.count = String(total);
     el.gridEmpty.classList.toggle('hidden', S.peers.size > 0);
     el.people.textContent = `${total} peserta`;
+    updateQualityBadge();
   }
 
   /* ------------------------------------------------------------------ */
@@ -802,11 +854,19 @@
   /* ------------------------------------------------------------------ */
 
   let levelTimer = null;
+  let tuneTick = 0;
 
   function startLevelMonitor() {
     if (levelTimer) return;
     levelTimer = setInterval(async () => {
       reconcileScreenTiles();
+
+      // Tuning bitrate bisa gagal kalau dipanggil sebelum negosiasi selesai
+      // (event-nya tidak selalu datang di waktu yang tepat). Loop ini memastikan
+      // nilai akhirnya tetap benar dalam ~2 detik, berapa pun urutan event-nya.
+      tuneTick++;
+      if (tuneTick % 3 === 0) tuneAllSenders();
+
       for (const p of S.peers.values()) {
         try {
           const rep = await p.pc.getStats();
@@ -865,11 +925,13 @@
       ensureTile(id, { name });
       updateTileState(id, { name, muted: false, camOff: true });
       syncGridCount();
+      tuneAllSenders(); // peserta baru -> bitrate semua orang diturunkan
     });
 
     socket.on('peer-left', ({ id }) => {
       destroyPeer(id);
       renderPeople();
+      tuneAllSenders(); // peserta berkurang -> kualitas bisa dinaikkan lagi
     });
 
     socket.on('peer-state', ({ id, muted, camOff, screen }) => {
@@ -900,6 +962,8 @@
       }
       updateTileState(S.selfId, { name: S.name, isHost: host === S.selfId });
       renderPeople();
+      tuneAllSenders();
+      syncGridCount();
     });
 
     socket.on('host', () => {
@@ -1595,6 +1659,7 @@
   async function boot() {
     el.year.textContent = String(new Date().getFullYear());
     window.__univmeet = S; // untuk debugging / e2e test
+    window.__tuneAll = tuneAllSenders; // dipakai tes otomatis
     markScreenAvailability();
 
     try {

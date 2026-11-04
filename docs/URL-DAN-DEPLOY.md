@@ -60,8 +60,8 @@ Kalau JS/CSS berubah, naikkan versi di `public/index.html`
 
 | File | Untuk apa |
 |---|---|
-| `wrangler.jsonc` | Konfigurasi **Pages** (production branch `main`, binding Durable Object) |
-| `wrangler.worker.jsonc` | Konfigurasi **Worker** (`main`, assets, migrasi DO) |
+| `wrangler.jsonc` | Konfigurasi **Pages** (production branch `main`, binding Durable Object, `MAX_PEERS`) |
+| `wrangler.worker.jsonc` | Konfigurasi **Worker** (`main`, assets, migrasi DO, `MAX_PEERS`) |
 | `functions/ws.js` | WebSocket signaling → diteruskan ke Durable Object |
 | `functions/config.js` | daftar STUN/TURN untuk browser |
 | `functions/healthz.js` | cek status |
@@ -92,6 +92,26 @@ Atau dobel-klik `scripts\NYALAIN-UNIVMEET.bat` (server + tunnel opsional).
 3. Ikuti record DNS yang diberikan
 
 Tidak perlu ubah kode.
+
+---
+
+## Ubah kapasitas ruang (MAX_PEERS)
+
+Default **20 orang**, boleh 2–30. Ubah di **dua** file:
+
+- `wrangler.jsonc` → `"MAX_PEERS": "20"`
+- `wrangler.worker.jsonc` → `"MAX_PEERS": "20"`
+
+Lalu deploy ulang (worker dulu, baru pages). Verifikasi:
+
+```bash
+curl -s https://univmeet.pages.dev/config | grep -o '"maxPeers":[0-9]*'
+EXPECT=30 node test/capacity-check.js
+```
+
+> Di atas 20 orang, mesh makin berat: tiap orang upload ke semua orang lain.
+> Kualitas diturunkan otomatis (lihat tabel di README), tapi batas nyata tetap
+> **upload internet tiap peserta**.
 
 ---
 

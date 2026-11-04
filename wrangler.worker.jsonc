@@ -26,6 +26,6 @@
     "enabled": true
   },
   "vars": {
-    "MAX_PEERS": "8"
+    "MAX_PEERS": "20"
   }
 }
