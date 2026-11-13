@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>UnivMeet — Rapat Online Gratis</title>
+<title>UnivMeet - Rapat Online Gratis</title>
 <meta name="description" content="UnivMeet: rapat dan kuliah online gratis langsung dari browser. Video, suara, share layar, dan chat tanpa install." />
 <meta name="theme-color" content="#0b0f19" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Cpath d='M8 12a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-8zm12 3.2 4.4-2.6c.5-.3 1.1.05 1.1.63v5.54c0 .58-.6.93-1.1.63L20 16.8v-1.6z' fill='white'/%3E%3C/svg%3E" />
@@ -28,7 +28,7 @@
   <main class="land-main">
     <section class="hero">
       <h1>Rapat &amp; kuliah online,<br /><span class="grad">tanpa install.</span></h1>
-      <p class="sub">Video langsung antar browser (P2P). Gratis, cepat, dan bisa dipakai dari HP maupun laptop.</p>
+      <p class="sub">Video dan suara mengalir langsung antar browser. Gratis, tanpa install, bisa dipakai dari HP maupun laptop.</p>
 
       <form id="join-form" class="card" autocomplete="off">
         <div class="field">
@@ -47,10 +47,10 @@
       </form>
 
       <ul class="feat">
-        <li><span>🎥</span>Video &amp; suara HD</li>
-        <li><span>🖥️</span>Share layar</li>
-        <li><span>💬</span>Chat rapat</li>
-        <li><span>🔒</span>Kunci rapat</li>
+        <li>Video dan suara</li>
+        <li>Share layar</li>
+        <li>Chat</li>
+        <li>Kunci rapat</li>
       </ul>
     </section>
   </main>
@@ -62,10 +62,10 @@
       <li>Klik <b>Copy link</b>, kirim ke teman / dosen / peserta.</li>
       <li>Mereka buka link itu, isi nama, langsung masuk.</li>
     </ol>
-    <p class="note">Maksimal <b id="max-peers">8</b> orang per rapat. Tidak perlu akun, tidak perlu install.</p>
+    <p class="note">Maksimal <b id="max-peers">20</b> orang per rapat. Tidak perlu akun dan tidak perlu install.</p>
   </section>
 
-  <footer class="land-foot">© <span id="year"></span> UnivMeet · univmeet.online</footer>
+  <footer class="land-foot">© <span id="year"></span> UnivMeet · univmeet.pages.dev</footer>
 </div>
 
 <!-- ============ ROOM ============ -->
@@ -81,21 +81,27 @@
     <div class="room-mid">
       <button id="btn-copy" class="code-pill" title="Copy link rapat">
         <svg viewBox="0 0 24 24" class="ico"><path d="M9 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2zm-4 6H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        <span id="room-code">—</span>
+        <span id="room-code">-</span>
       </button>
       <span class="dot-live" id="live-dot" title="Terhubung"></span>
     </div>
 
     <div class="room-right">
       <span class="people" id="people-count">1 peserta</span>
-      <span class="quality" id="quality-badge" title="Kualitas menyesuaikan jumlah peserta">—</span>
-      <button id="btn-sound" class="btn tiny" title="Volume suara peserta">🔊 <span id="vol-label">100%</span></button>
-      <button id="btn-lock" class="btn tiny" title="Kunci rapat (hanya host)">🔓 Kunci</button>
+      <span class="quality" id="quality-badge" title="Kualitas menyesuaikan jumlah peserta">-</span>
+      <button id="btn-sound" class="btn tiny" title="Volume suara peserta">
+        <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M4 10v4a1 1 0 0 0 1 1h3l4 3V6L8 9H5a1 1 0 0 0-1 1z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span id="vol-label">100%</span>
+      </button>
+      <button id="btn-lock" class="btn tiny" title="Kunci rapat (hanya host)">
+        <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span id="lock-label">Kunci</span>
+      </button>
     </div>
   </header>
 
   <div id="audio-unlock" class="audio-unlock hidden">
-    <span>🔇 Suara peserta diblokir browser</span>
+    <span>Suara peserta diblokir browser</span>
     <button id="btn-unlock" class="btn primary tiny">Aktifkan suara</button>
   </div>
 
@@ -168,7 +174,7 @@
   </div>
 </div>
 
-<script src="/net.js?v=6"></script>
-<script src="/app.js?v=6"></script>
+<script src="/net.js?v=7"></script>
+<script src="/app.js?v=7"></script>
 </body>
 </html>

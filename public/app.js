@@ -1,5 +1,5 @@
 /* ==========================================================================
-   UnivMeet client — WebRTC mesh
+   UnivMeet client - WebRTC mesh
    - signaling via Socket.IO
    - video/audio P2P (server cuma relay offer/answer/ICE)
    ========================================================================== */
@@ -145,12 +145,12 @@
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         attachLocalTracks(stream);
         S.camOn = false;
-        toast('Kamera tidak bisa diakses — masuk mode suara saja');
+        toast('Kamera tidak bisa diakses, masuk mode suara saja');
         return true;
       } catch (err2) {
         S.camOn = false;
         S.micOn = false;
-        toast('Kamera & mikrofon tidak tersedia — masuk tanpa media');
+        toast('Kamera dan mikrofon tidak tersedia, masuk tanpa media');
         return false;
       }
     }
@@ -290,13 +290,14 @@
   function updateQualityBadge() {
     const elq = document.getElementById('quality-badge');
     if (!elq) return;
-    const n = Math.max(1, S.peers.size);
+    const others = Math.max(1, S.peers.size); // jumlah stream yang kita kirim
+    const people = S.peers.size + 1;          // jumlah orang di ruangan (termasuk kita)
     const tier = currentTier();
     const label = S.screenStream ? `layar ${tier.screen}k` : `kamera ${tier.cam}k`;
-    elq.textContent = `${n} orang · ${label}`;
-    elq.title = n >= 12
-      ? 'Peserta banyak: kualitas diturunkan otomatis supaya semua tetap lancar (batas upload).'
-      : 'Kualitas menyesuaikan jumlah peserta.';
+    elq.textContent = `${people} orang · ${label}`;
+    elq.title = people >= 12
+      ? `Ruangan ramai: bitrate diturunkan jadi ${label} per orang supaya semua tetap lancar. Batasnya upload internet tiap peserta.`
+      : `Kualitas menyesuaikan jumlah peserta. Sekarang ${label} per stream ke ${others} peserta.`;
   }
 
   function applyContentHint() {
@@ -431,7 +432,7 @@
     tag.className = 'tag';
     const nm = document.createElement('span');
     nm.className = 'nm';
-    nm.textContent = (name || 'Peserta') + ' — layar';
+    nm.textContent = (name || 'Peserta') + ' (layar)';
     tag.appendChild(nm);
 
     const badge = document.createElement('div');
@@ -666,7 +667,7 @@
     // karena transceiver lokal yang dibuat sebelum setRemoteDescription TIDAK terpasang
     // ke m-line offer -> jawaban jadi recvonly (media kita tidak terkirim).
     //
-    // PENTING: jalur video DIPISAH — kamera dan layar punya transceiver sendiri.
+    // PENTING: jalur video DIPISAH: kamera dan layar punya transceiver sendiri.
     // Dengan begitu banyak orang bisa share layar bersamaan tanpa saling menimpa kamera.
     if (initiator) {
       const ls = S.localStream || new MediaStream();
@@ -916,7 +917,7 @@
 
     socket.on('disconnect', () => {
       el.liveDot.classList.add('off');
-      if (!S.leaving) toast('Koneksi terputus — mencoba menyambung ulang…');
+      if (!S.leaving) toast('Koneksi terputus, mencoba menyambung ulang');
     });
 
     socket.on('signal', handleSignal);
@@ -1065,7 +1066,7 @@
       if (!isRejoin) {
         const link = location.origin + '/r/' + res.room;
         addSystemMsg(`Link rapat: ${link}`);
-        toast('Rapat siap — copy link buat ngajak orang');
+        toast('Rapat siap. Copy link buat ngajak orang');
       }
       syncControls();
     });
@@ -1077,7 +1078,7 @@
     S.selfId = null;
     el.room.classList.add('hidden');
     el.landing.classList.remove('hidden');
-    document.title = 'UnivMeet — Rapat Online Gratis';
+    document.title = 'UnivMeet - Rapat Online Gratis';
     history.replaceState({}, '', '/');
     if (msg) setHint(msg, true);
     syncControls();
@@ -1133,8 +1134,10 @@
   }
 
   function updateLockUi() {
-    el.btnLock.textContent = S.locked ? '🔒 Terkunci' : '🔓 Kunci';
-    el.btnLock.title = S.isHost ? 'Klik untuk kunci/buka rapat' : 'Hanya host yang bisa mengunci rapat';
+    const lbl = document.getElementById('lock-label');
+    if (lbl) lbl.textContent = S.locked ? 'Terkunci' : 'Kunci';
+    el.btnLock.classList.toggle('active', !!S.locked);
+    el.btnLock.title = S.isHost ? 'Klik untuk kunci atau buka rapat' : 'Hanya host yang bisa mengunci rapat';
     el.btnLock.style.opacity = S.isHost ? '1' : '.55';
   }
 
@@ -1202,11 +1205,11 @@
     if (blockedByIframe || noApi || mobile) {
       btn.classList.add('na');
       btn.title = blockedByIframe
-        ? 'Share layar tidak bisa di dalam panel preview — buka di tab browser'
+        ? 'Share layar tidak bisa di dalam panel preview. Buka di tab browser'
         : mobile
           ? 'Share layar hanya dari laptop/PC, bukan HP'
           : 'Browser ini tidak mendukung share layar';
-      if (label && !S.screenStream) label.textContent = 'Layar ✕';
+      if (label && !S.screenStream) label.textContent = 'Layar';
     } else {
       btn.classList.remove('na');
       btn.title = 'Share layar';
@@ -1350,14 +1353,14 @@
 
     const reasons = [];
     if (diag.inIframe) {
-      reasons.push('Kamu membuka UnivMeet di dalam <b>panel preview / iframe</b>, bukan di browser. Browser <b>memblokir share layar di dalam iframe</b> — ini aturan keamanan browser, bukan kerusakan aplikasi.');
+      reasons.push('Kamu membuka UnivMeet di dalam <b>panel preview / iframe</b>, bukan di browser. Browser <b>memblokir share layar di dalam iframe</b>. Itu aturan keamanan browser, bukan kerusakan aplikasi.');
       reasons.push('Solusi: buka alamatnya di <b>tab browser sungguhan</b> (Chrome/Edge/Brave), lalu share layar dari sana.');
     }
     if (mobile) {
       reasons.push('Browser di HP umumnya <b>tidak mendukung</b> share layar. Pakai laptop/PC.');
     }
     if (!diag.secure) {
-      reasons.push('Halaman tidak HTTPS — share layar diblokir. Buka lewat <b>https://</b>.');
+      reasons.push('Halaman tidak HTTPS, jadi share layar diblokir. Buka lewat <b>https://</b>.');
     }
     if (permState === 'denied') {
       reasons.push('Izin share layar pernah <b>ditolak</b> dan masih diingat browser, jadi jendela pilih layar tidak muncul lagi.');
@@ -1372,16 +1375,16 @@
       reasons.push('Permintaan tidak dianggap aksi pengguna. Klik ulang tombol Layar (jangan lewat skrip/otomatis).');
     }
     if (/Brave/i.test(browser)) {
-      reasons.push('Di Brave, proteksi Shields kadang memblokir share layar — coba turunkan Shields untuk situs ini.');
+      reasons.push('Di Brave, proteksi Shields kadang memblokir share layar. Coba turunkan Shields untuk situs ini.');
     }
     if (!reasons.length) {
-      reasons.push('Penyebab belum pasti — lihat detail teknis di bawah.');
+      reasons.push('Penyebab belum pasti. Lihat detail teknis di bawah.');
     }
 
     const steps = diag.inIframe
       ? [
           'Copy alamat ini: <code>' + diag.origin + '</code>',
-          'Buka di <b>tab browser</b> (Chrome / Edge / Brave) — bukan di panel preview.',
+          'Buka di <b>tab browser</b> (Chrome / Edge / Brave), bukan di panel preview.',
           'Masuk rapat seperti biasa, lalu klik <b>Layar</b>.',
         ]
       : [
@@ -1423,7 +1426,7 @@
     wrap.querySelector('#sf-copy').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(detail);
-        toast('Detail dicopy — tempel ke chat biar gua bisa bantu');
+        toast('Detail sudah dicopy. Tempel ke chat biar gua bisa bantu');
       } catch (_) {
         toast('Gagal copy, salin manual dari Detail teknis');
       }
@@ -1437,7 +1440,7 @@
     }
     S.screenStream = null;
 
-    // kosongkan jalur layar saja — kamera tidak disentuh
+    // kosongkan jalur layar saja, kamera tidak disentuh
     pushScreenToPeers();
     hideLocalScreenTile();
 
@@ -1677,7 +1680,7 @@
     const code = roomFromUrl();
     if (code) {
       el.inCode.value = code;
-      setHint(`Kamu diundang ke rapat "${code}" — isi nama lalu klik Gabung.`);
+      setHint(`Kamu diundang ke rapat "${code}". Isi nama lalu klik Gabung.`);
     }
 
     // koneksi WebSocket dibuat saat join (room ikut di URL)

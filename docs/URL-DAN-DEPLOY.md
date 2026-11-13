@@ -1,124 +1,93 @@
-# URL & Deploy — UnivMeet
+# URL dan cara deploy
 
-## URL resmi (permanen)
+## Alamat resmi
 
 ```
 https://univmeet.pages.dev
 ```
 
-Link rapat: `https://univmeet.pages.dev/r/<kode-rapat>`
+Link rapat bentuknya `https://univmeet.pages.dev/r/<kode-rapat>`.
 
-| | |
-|---|---|
-| Biaya | Rp 0 (gratis, tanpa kartu kredit) |
-| PC harus nyala? | **Tidak** — server jalan di Cloudflare |
-| Halaman peringatan | Tidak ada |
-| HTTPS | Otomatis (wajib untuk kamera/mikrofon) |
-| Repo | https://github.com/padilalawi/univmeet |
+Tidak ada biaya dan tidak perlu kartu kredit. PC tidak harus menyala karena servernya jalan di Cloudflare. Halaman peringatan tidak ada. HTTPS otomatis, dan itu wajib supaya kamera serta mikrofon bisa dipakai.
 
----
+Repo: https://github.com/padilalawi/univmeet
 
 ## Arsitektur
 
 ```
 Browser  <--WSS-->  Cloudflare Pages (univmeet.pages.dev)
                          |
-                         +--> Durable Object "RoomDO" (satu per kode rapat)
-                              - daftar peserta
-                              - relay sinyal WebRTC (offer/answer/ICE)
-                              - chat, lock, kick
-
-Video & audio TIDAK lewat server  ->  P2P langsung antar browser.
-Server hanya mengatur "siapa bertemu siapa" (signaling).
+                         +--> Durable Object RoomDO, satu per kode rapat
+                              daftar peserta, relay sinyal WebRTC,
+                              chat, lock, kick
 ```
 
-Kenapa tidak pakai `workers.dev`: **diblokir ISP Indonesia** (DNS NXDOMAIN + TLS reset).
-`pages.dev` lolos dan formatnya lebih bersih (tanpa nama akun di tengah).
+Video dan audio tidak lewat server. Keduanya mengalir langsung antar browser. Server hanya mengatur siapa bertemu siapa.
 
----
+Tidak memakai workers.dev karena domain itu diblokir ISP Indonesia. Gejalanya DNS NXDOMAIN di Chrome dan TLS reset di curl. pages.dev lolos, dan formatnya juga lebih bersih karena tidak ada nama akun di tengah.
 
-## Cara update kalau kode diubah
+## Cara update
 
 ```bash
 cd "C:\Users\DIZZO KINTIL\hermes project\web\univmeet"
 
-# 1) kalau worker / Durable Object berubah (src/worker.js, lib/protocol.js)
+# kalau src/worker.js atau lib/protocol.js berubah
 npx wrangler deploy --config wrangler.worker.jsonc
 
-# 2) kalau tampilan / logika browser berubah (public/, functions/)
+# kalau public/ atau functions/ berubah
 npx wrangler pages deploy --project-name univmeet --branch main --commit-dirty=true
 ```
 
-> Kalau ragu mana yang berubah: jalankan **dua-duanya**, urutannya worker dulu.
+Kalau ragu mana yang berubah, jalankan dua-duanya dengan urutan seperti di atas.
 
-Kalau JS/CSS berubah, naikkan versi di `public/index.html`
-(`app.js?v=N` → `?v=N+1`) supaya browser pengguna tidak pakai cache lama.
-
----
+Saat mengubah file di `public/`, naikkan nomor versi di `index.html` (`app.js?v=6` jadi `?v=7`) supaya browser pengguna tidak memakai cache lama.
 
 ## File konfigurasi
 
-| File | Untuk apa |
+| File | Isinya |
 |---|---|
-| `wrangler.jsonc` | Konfigurasi **Pages** (production branch `main`, binding Durable Object, `MAX_PEERS`) |
-| `wrangler.worker.jsonc` | Konfigurasi **Worker** (`main`, assets, migrasi DO, `MAX_PEERS`) |
-| `functions/ws.js` | WebSocket signaling → diteruskan ke Durable Object |
-| `functions/config.js` | daftar STUN/TURN untuk browser |
-| `functions/healthz.js` | cek status |
-| `lib/protocol.js` | logika protokol — dipakai bersama Node & Cloudflare |
-| `public/_redirects` | `/r/*` → `/` (biar link rapat bisa dibuka) |
-| `public/_headers` | no-cache untuk HTML/JS (update langsung kepakai) |
+| `wrangler.jsonc` | Konfigurasi Pages: production branch `main`, binding Durable Object, `MAX_PEERS` |
+| `wrangler.worker.jsonc` | Konfigurasi Worker: entry point, assets, migrasi DO, `MAX_PEERS` |
+| `functions/ws.js` | WebSocket signaling, diteruskan ke Durable Object |
+| `functions/config.js` | Daftar STUN/TURN untuk browser |
+| `functions/healthz.js` | Cek status |
+| `lib/protocol.js` | Logika protokol, dipakai bersama Node dan Cloudflare |
+| `public/_redirects` | `/r/*` diarahkan ke `/` |
+| `public/_headers` | no-cache untuk HTML dan JS |
 
----
-
-## Jalan lokal (buat ngoprek)
+## Jalan lokal
 
 ```bash
 npm install
-npm start          # -> http://localhost:3000
+npm start
 ```
 
-Atau dobel-klik `scripts\NYALAIN-UNIVMEET.bat` (server + tunnel opsional).
+Buka http://localhost:3000. Atau dobel-klik `scripts\NYALAIN-UNIVMEET.bat` kalau mau sekalian bikin tunnel.
 
-> Kamera/mikrofon hanya jalan di `localhost` atau HTTPS. Lewat IP LAN
-> (`http://192.168.x.x:3000`) browser akan blokir.
+Kamera dan mikrofon hanya jalan di localhost atau HTTPS. Lewat IP LAN seperti http://192.168.x.x:3000, browser memblokirnya.
 
----
+## Ubah kapasitas ruang
 
-## Domain sendiri (kalau nanti mau)
+Default 20 orang, boleh 2 sampai 30. Ubah di dua file:
 
-1. Beli domain (mis. `univmeet.online`)
-2. Cloudflare Pages → project `univmeet` → **Custom domains** → tambah domain
-3. Ikuti record DNS yang diberikan
+- `wrangler.jsonc`, baris `"MAX_PEERS": "20"`
+- `wrangler.worker.jsonc`, baris `"MAX_PEERS": "20"`
 
-Tidak perlu ubah kode.
-
----
-
-## Ubah kapasitas ruang (MAX_PEERS)
-
-Default **20 orang**, boleh 2–30. Ubah di **dua** file:
-
-- `wrangler.jsonc` → `"MAX_PEERS": "20"`
-- `wrangler.worker.jsonc` → `"MAX_PEERS": "20"`
-
-Lalu deploy ulang (worker dulu, baru pages). Verifikasi:
+Deploy ulang worker dulu, lalu Pages. Verifikasinya:
 
 ```bash
 curl -s https://univmeet.pages.dev/config | grep -o '"maxPeers":[0-9]*'
 EXPECT=30 node test/capacity-check.js
 ```
 
-> Di atas 20 orang, mesh makin berat: tiap orang upload ke semua orang lain.
-> Kualitas diturunkan otomatis (lihat tabel di README), tapi batas nyata tetap
-> **upload internet tiap peserta**.
+Di atas 20 orang mesh makin berat karena tiap peserta upload ke semua peserta lain. Kualitas diturunkan otomatis, tapi batas nyatanya tetap upload internet masing-masing peserta.
 
----
+## Domain sendiri
+
+Beli domainnya dulu, misalnya univmeet.online. Lalu buka Cloudflare Pages, pilih project univmeet, masuk ke Custom domains, dan tambahkan domain tersebut. Ikuti record DNS yang diberikan. Kode tidak perlu diubah.
 
 ## Keamanan
 
-- Token ngrok pernah ditempel di chat → **sudah tidak dipakai**.
-  Kalau masih ingin pakai ngrok, revoke dulu:
-  `dashboard.ngrok.com/get-started/your-authtoken`
-- Kredensial Cloudflare (OAuth) tersimpan lokal di
-  `%APPDATA%\xdg.config\.wrangler\config\default.toml` — jangan dibagikan.
+Token ngrok pernah ditempel di chat, jadi anggap bocor dan tidak dipakai lagi. Kalau masih mau pakai ngrok, revoke dulu di dashboard.ngrok.com/get-started/your-authtoken.
+
+Kredensial Cloudflare hasil login OAuth tersimpan lokal di `%APPDATA%\xdg.config\.wrangler\config\default.toml`. Jangan dibagikan ke siapa pun.

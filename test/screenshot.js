@@ -80,7 +80,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // chat biar panel kelihatan isi
   await B.ev(`(()=>{const i=document.getElementById('chat-input');i.value='Halo, sudah bisa lihat layar saya?';document.getElementById('chat-form').dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));return 1})()`);
   await sleep(800);
-  await A.ev(`document.getElementById('btn-chat').click()`);
+  if (!process.env.NOCHAT) await A.ev(`document.getElementById('btn-chat').click()`);
   await sleep(900);
   console.log('shot:', await A.shot('02-room-2peserta.png'));
 
